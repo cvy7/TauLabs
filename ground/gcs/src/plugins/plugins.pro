@@ -333,3 +333,9 @@ plugin_boards_stm.subdir = boards_stm
 plugin_boards_stm.depends = plugin_coreplugin
 plugin_boards_stm.depends = plugin_uavobjects
 SUBDIRS += plugin_boards_stm
+
+# Dandys boards
+plugin_boards_dandys.subdir = boards_dandys
+plugin_boards_dandys.depends = plugin_coreplugin
+plugin_boards_dandys.depends = plugin_uavobjects
+SUBDIRS += plugin_boards_dandys

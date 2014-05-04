@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/dandys">
+        <file>images/draco.png</file>
+    </qresource>
+</RCC>
