@@ -71,53 +71,63 @@ static const struct pios_ms5611_cfg pios_ms5611_cfg = {
 };
 #endif /* PIOS_INCLUDE_MS5611 */
 
-/**
- * Configuration for the MPU6000 chip
- */
-#if defined(PIOS_INCLUDE_MPU6000)
-#include "pios_mpu6000.h"
-static const struct pios_exti_cfg pios_exti_mpu6000_cfg __exti_config = {
-	.vector = PIOS_MPU6000_IRQHandler,
-	.line = EXTI_Line0,
-	.pin = {
-		.gpio = GPIOC,
-		.init = {
-			.GPIO_Pin = GPIO_Pin_0,
-			.GPIO_Speed = GPIO_Speed_100MHz,
-			.GPIO_Mode = GPIO_Mode_IN,
-			.GPIO_OType = GPIO_OType_OD,
-			.GPIO_PuPd = GPIO_PuPd_NOPULL,
-		},
-	},
-	.irq = {
-		.init = {
-			.NVIC_IRQChannel = EXTI0_IRQn,
-			.NVIC_IRQChannelPreemptionPriority = PIOS_IRQ_PRIO_HIGH,
-			.NVIC_IRQChannelSubPriority = 0,
-			.NVIC_IRQChannelCmd = ENABLE,
-		},
-	},
-	.exti = {
-		.init = {
-			.EXTI_Line = EXTI_Line0, // matches above GPIO pin
-			.EXTI_Mode = EXTI_Mode_Interrupt,
-			.EXTI_Trigger = EXTI_Trigger_Rising,
-			.EXTI_LineCmd = ENABLE,
-		},
-	},
-};
 
-static const struct pios_mpu60x0_cfg pios_mpu6000_cfg = {
-	.exti_cfg = &pios_exti_mpu6000_cfg,
-	.default_samplerate = 666,
-	.interrupt_cfg = PIOS_MPU60X0_INT_CLR_ANYRD,
-	.interrupt_en = PIOS_MPU60X0_INTEN_DATA_RDY,
-	.User_ctl = PIOS_MPU60X0_USERCTL_DIS_I2C,
-	.Pwr_mgmt_clk = PIOS_MPU60X0_PWRMGMT_PLL_Z_CLK,
-	.default_filter = PIOS_MPU60X0_LOWPASS_256_HZ,
-	.orientation = PIOS_MPU60X0_TOP_180DEG
-};
-#endif /* PIOS_INCLUDE_MPU6000 */
+/**
+ * Configuration for the MPU9250 chip
+ */
+#if defined(PIOS_INCLUDE_MPU9250)
+#include "pios_mpu9250.h"
+	static const struct pios_exti_cfg pios_exti_mpu9250_cfg __exti_config = {
+		.vector = PIOS_MPU9250_IRQHandler,
+		.line = EXTI_Line0,
+		.pin = {
+			.gpio = GPIOE,
+			.init = {
+				.GPIO_Pin = GPIO_Pin_0,
+				.GPIO_Speed = GPIO_Speed_100MHz,
+				.GPIO_Mode = GPIO_Mode_IN,
+				.GPIO_OType = GPIO_OType_OD,
+				.GPIO_PuPd = GPIO_PuPd_NOPULL,
+			},
+		},
+		.irq = {
+			.init = {
+				.NVIC_IRQChannel = EXTI0_IRQn,
+				.NVIC_IRQChannelPreemptionPriority = PIOS_IRQ_PRIO_HIGH,
+				.NVIC_IRQChannelSubPriority = 0,
+				.NVIC_IRQChannelCmd = ENABLE,
+			},
+		},
+		.exti = {
+			.init = {
+				.EXTI_Line = EXTI_Line0, // matches above GPIO pin
+				.EXTI_Mode = EXTI_Mode_Interrupt,
+				.EXTI_Trigger = EXTI_Trigger_Rising,
+				.EXTI_LineCmd = ENABLE,
+			},
+		},
+	};
+
+	static const struct pios_mpu9250_cfg pios_mpu9250_intmag_cfg = {
+		.exti_cfg = &pios_exti_mpu9250_cfg,
+		.default_samplerate = 500,
+		.interrupt_cfg = PIOS_MPU60X0_INT_CLR_ANYRD,
+		.use_magnetometer = true,
+		.default_gyro_filter = PIOS_MPU9250_GYRO_LOWPASS_184_HZ,
+		.default_accel_filter = PIOS_MPU9250_ACCEL_LOWPASS_184_HZ,
+		.orientation = PIOS_MPU9250_BOTTOM_270DEG,
+	};
+
+	static const struct pios_mpu9250_cfg pios_mpu9250_extmag_cfg = {
+		.exti_cfg = &pios_exti_mpu9250_cfg,
+		.default_samplerate = 500,
+		.interrupt_cfg = PIOS_MPU60X0_INT_CLR_ANYRD,
+		.use_magnetometer = false,
+		.default_gyro_filter = PIOS_MPU9250_GYRO_LOWPASS_184_HZ,
+		.default_accel_filter = PIOS_MPU9250_ACCEL_LOWPASS_184_HZ,
+		.orientation = PIOS_MPU9250_BOTTOM_270DEG,
+	};
+#endif
 
 /* One slot per selectable receiver group.
  *  eg. PWM, PPM, GCS, SPEKTRUM1, SPEKTRUM2, SBUS
@@ -961,89 +971,14 @@ void PIOS_Board_Init(void) {
 #endif
 
 
-
-
-	PIOS_WDG_Clear();
-	PIOS_DELAY_WaitmS(200);
 	PIOS_WDG_Clear();
 
-#if defined(PIOS_INCLUDE_MPU6000)
-	if (PIOS_MPU6000_Init(pios_spi_gyro_accel_id, 0, &pios_mpu6000_cfg) != 0)
-		panic(2);
-	if (PIOS_MPU6000_Test() != 0)
-		panic(2);
-
-	// To be safe map from UAVO enum to driver enum
-	uint8_t hw_gyro_range;
-	HwQuantonGyroRangeGet(&hw_gyro_range);
-	switch(hw_gyro_range) {
-		case HWQUANTON_GYRORANGE_250:
-			PIOS_MPU6000_SetGyroRange(PIOS_MPU60X0_SCALE_250_DEG);
-			break;
-		case HWQUANTON_GYRORANGE_500:
-			PIOS_MPU6000_SetGyroRange(PIOS_MPU60X0_SCALE_500_DEG);
-			break;
-		case HWQUANTON_GYRORANGE_1000:
-			PIOS_MPU6000_SetGyroRange(PIOS_MPU60X0_SCALE_1000_DEG);
-			break;
-		case HWQUANTON_GYRORANGE_2000:
-			PIOS_MPU6000_SetGyroRange(PIOS_MPU60X0_SCALE_2000_DEG);
-			break;
-	}
-
-	uint8_t hw_accel_range;
-	HwQuantonAccelRangeGet(&hw_accel_range);
-	switch(hw_accel_range) {
-		case HWQUANTON_ACCELRANGE_2G:
-			PIOS_MPU6000_SetAccelRange(PIOS_MPU60X0_ACCEL_2G);
-			break;
-		case HWQUANTON_ACCELRANGE_4G:
-			PIOS_MPU6000_SetAccelRange(PIOS_MPU60X0_ACCEL_4G);
-			break;
-		case HWQUANTON_ACCELRANGE_8G:
-			PIOS_MPU6000_SetAccelRange(PIOS_MPU60X0_ACCEL_8G);
-			break;
-		case HWQUANTON_ACCELRANGE_16G:
-			PIOS_MPU6000_SetAccelRange(PIOS_MPU60X0_ACCEL_16G);
-			break;
-	}
-
-	// the filter has to be set before rate else divisor calculation will fail
-	uint8_t hw_mpu6000_dlpf;
-	HwQuantonMPU6000DLPFGet(&hw_mpu6000_dlpf);
-	enum pios_mpu60x0_filter mpu6000_dlpf = \
-	    (hw_mpu6000_dlpf == HWQUANTON_MPU6000DLPF_256) ? PIOS_MPU60X0_LOWPASS_256_HZ : \
-	    (hw_mpu6000_dlpf == HWQUANTON_MPU6000DLPF_188) ? PIOS_MPU60X0_LOWPASS_188_HZ : \
-	    (hw_mpu6000_dlpf == HWQUANTON_MPU6000DLPF_98) ? PIOS_MPU60X0_LOWPASS_98_HZ : \
-	    (hw_mpu6000_dlpf == HWQUANTON_MPU6000DLPF_42) ? PIOS_MPU60X0_LOWPASS_42_HZ : \
-	    (hw_mpu6000_dlpf == HWQUANTON_MPU6000DLPF_20) ? PIOS_MPU60X0_LOWPASS_20_HZ : \
-	    (hw_mpu6000_dlpf == HWQUANTON_MPU6000DLPF_10) ? PIOS_MPU60X0_LOWPASS_10_HZ : \
-	    (hw_mpu6000_dlpf == HWQUANTON_MPU6000DLPF_5) ? PIOS_MPU60X0_LOWPASS_5_HZ : \
-	    pios_mpu6000_cfg.default_filter;
-	PIOS_MPU6000_SetLPF(mpu6000_dlpf);
-
-	uint8_t hw_mpu6000_samplerate;
-	HwQuantonMPU6000RateGet(&hw_mpu6000_samplerate);
-	uint16_t mpu6000_samplerate = \
-	    (hw_mpu6000_samplerate == HWQUANTON_MPU6000RATE_200) ? 200 : \
-	    (hw_mpu6000_samplerate == HWQUANTON_MPU6000RATE_333) ? 333 : \
-	    (hw_mpu6000_samplerate == HWQUANTON_MPU6000RATE_500) ? 500 : \
-	    (hw_mpu6000_samplerate == HWQUANTON_MPU6000RATE_666) ? 666 : \
-	    (hw_mpu6000_samplerate == HWQUANTON_MPU6000RATE_1000) ? 1000 : \
-	    (hw_mpu6000_samplerate == HWQUANTON_MPU6000RATE_2000) ? 2000 : \
-	    (hw_mpu6000_samplerate == HWQUANTON_MPU6000RATE_4000) ? 4000 : \
-	    (hw_mpu6000_samplerate == HWQUANTON_MPU6000RATE_8000) ? 8000 : \
-	    pios_mpu6000_cfg.default_samplerate;
-	PIOS_MPU6000_SetSampleRate(mpu6000_samplerate);
-#endif
-
+	uint8_t hw_magnetometer;
+	HwDracoMagnetometerGet(&hw_magnetometer);
 #if defined(PIOS_INCLUDE_I2C)
 #if defined(PIOS_INCLUDE_HMC5883)
 	{
-		uint8_t Magnetometer;
-		HwDracoMagnetometerGet(&Magnetometer);
-
-		if (Magnetometer == HWDRACO_MAGNETOMETER_EXTERNALI2C) {
+		if (hw_magnetometer == HWDRACO_MAGNETOMETER_EXTERNALI2C) {
 			if (PIOS_HMC5883_Init(pios_i2c_external_adapter_id, &pios_hmc5883_external_cfg) != 0)
 				panic(3);
 			if (PIOS_HMC5883_Test() != 0)
@@ -1066,11 +1001,102 @@ void PIOS_Board_Init(void) {
 	}
 #endif
 
-	//I2C is slow, sensor init as well, reset watchdog to prevent reset here
 	PIOS_WDG_Clear();
+#if defined (PIOS_INCLUDE_MPU9250) && defined(PIOS_INCLUDE_SPI)
+	{
+		const struct pios_mpu9250_cfg *mpu9250_cfg;
+		if (hw_magnetometer == HWDRACO_MAGNETOMETER_INTERNAL) {
+			mpu9250_cfg = &pios_mpu9250_intmag_cfg;
+		} else {
+			mpu9250_cfg = &pios_mpu9250_extmag_cfg;
+		}
 
 
-	//I2C is slow, sensor init as well, reset watchdog to prevent reset here
+		if (PIOS_MPU9250_SPI_Init(pios_spi_internal_id, 1, mpu9250_cfg) != 0)
+			panic(2);
+
+		if (PIOS_MPU9250_Test() != 0)
+			panic(2);
+
+		uint8_t hw_gyro_range;
+		HwDracoGyroRangeGet(&hw_gyro_range);
+		switch(hw_gyro_range) {
+		case HWDRACO_GYRORANGE_250:
+			PIOS_MPU9250_SetGyroRange(PIOS_MPU60X0_SCALE_250_DEG);
+			break;
+
+		case HWDRACO_GYRORANGE_500:
+			PIOS_MPU9250_SetGyroRange(PIOS_MPU60X0_SCALE_500_DEG);
+			break;
+
+		case HWDRACO_GYRORANGE_1000:
+			PIOS_MPU9250_SetGyroRange(PIOS_MPU60X0_SCALE_1000_DEG);
+			break;
+
+		case HWDRACO_GYRORANGE_2000:
+			PIOS_MPU9250_SetGyroRange(PIOS_MPU60X0_SCALE_2000_DEG);
+			break;
+		}
+
+		uint8_t hw_accel_range;
+		HwDracoAccelRangeGet(&hw_accel_range);
+		switch(hw_accel_range) {
+		case HWDRACO_ACCELRANGE_2G:
+			PIOS_MPU9250_SetAccelRange(PIOS_MPU60X0_ACCEL_2G);
+			break;
+		case HWDRACO_ACCELRANGE_4G:
+			PIOS_MPU9250_SetAccelRange(PIOS_MPU60X0_ACCEL_4G);
+			break;
+		case HWDRACO_ACCELRANGE_8G:
+			PIOS_MPU9250_SetAccelRange(PIOS_MPU60X0_ACCEL_8G);
+			break;
+		case HWDRACO_ACCELRANGE_16G:
+			PIOS_MPU9250_SetAccelRange(PIOS_MPU60X0_ACCEL_16G);
+			break;
+		}
+		// the filter has to be set before rate else divisor calculation will fail
+
+		uint8_t hw_mpu9250_gyro_dlpf;
+		HwDracoMPU9250DLPFGyroGet(&hw_mpu9250_gyro_dlpf);
+		enum pios_mpu9250_gyro_filter mpu9250_gyro_dlpf = \
+			(hw_mpu9250_gyro_dlpf == HWDRACO_MPU9250DLPFGYRO_184) ? PIOS_MPU9250_GYRO_LOWPASS_184_HZ : \
+			(hw_mpu9250_gyro_dlpf == HWDRACO_MPU9250DLPFGYRO_92) ? PIOS_MPU9250_GYRO_LOWPASS_92_HZ : \
+			(hw_mpu9250_gyro_dlpf == HWDRACO_MPU9250DLPFGYRO_41) ? PIOS_MPU9250_GYRO_LOWPASS_41_HZ : \
+			(hw_mpu9250_gyro_dlpf == HWDRACO_MPU9250DLPFGYRO_20) ? PIOS_MPU9250_GYRO_LOWPASS_20_HZ : \
+			(hw_mpu9250_gyro_dlpf == HWDRACO_MPU9250DLPFGYRO_10) ? PIOS_MPU9250_GYRO_LOWPASS_10_HZ : \
+			(hw_mpu9250_gyro_dlpf == HWDRACO_MPU9250DLPFGYRO_5) ? PIOS_MPU9250_GYRO_LOWPASS_5_HZ : \
+			mpu9250_cfg->default_gyro_filter;
+		PIOS_MPU9250_SetGyroLPF(mpu9250_gyro_dlpf);
+
+		uint8_t hw_mpu9250_accel_dlpf;
+		HwDracoMPU9250DLPFAccelGet(&hw_mpu9250_accel_dlpf);
+		enum pios_mpu9250_accel_filter mpu9250_accel_dlpf = \
+			(hw_mpu9250_accel_dlpf == HWDRACO_MPU9250DLPFACCEL_460) ? PIOS_MPU9250_ACCEL_LOWPASS_460_HZ : \
+			(hw_mpu9250_accel_dlpf == HWDRACO_MPU9250DLPFACCEL_184) ? PIOS_MPU9250_ACCEL_LOWPASS_184_HZ : \
+			(hw_mpu9250_accel_dlpf == HWDRACO_MPU9250DLPFACCEL_92) ? PIOS_MPU9250_ACCEL_LOWPASS_92_HZ : \
+			(hw_mpu9250_accel_dlpf == HWDRACO_MPU9250DLPFACCEL_41) ? PIOS_MPU9250_ACCEL_LOWPASS_41_HZ : \
+			(hw_mpu9250_accel_dlpf == HWDRACO_MPU9250DLPFACCEL_20) ? PIOS_MPU9250_ACCEL_LOWPASS_20_HZ : \
+			(hw_mpu9250_accel_dlpf == HWDRACO_MPU9250DLPFACCEL_10) ? PIOS_MPU9250_ACCEL_LOWPASS_10_HZ : \
+			(hw_mpu9250_accel_dlpf == HWDRACO_MPU9250DLPFACCEL_5) ? PIOS_MPU9250_ACCEL_LOWPASS_5_HZ : \
+			mpu9250_cfg->default_accel_filter;
+		PIOS_MPU9250_SetAccelLPF(mpu9250_accel_dlpf);
+
+		uint8_t hw_mpu9250_samplerate;
+		HwDracoMPU9250RateGet(&hw_mpu9250_samplerate);
+		uint16_t samplerate = mpu9250_cfg->default_samplerate;
+		samplerate = \
+			(samplerate == HWDRACO_MPU9250RATE_200) ? 200 : \
+			(samplerate == HWDRACO_MPU9250RATE_333) ? 333 : \
+			(samplerate == HWDRACO_MPU9250RATE_500) ? 500 : \
+			(samplerate == HWDRACO_MPU9250RATE_1000) ? 1000 : \
+			mpu9250_cfg->default_samplerate;
+		PIOS_MPU9250_SetSampleRate(samplerate);
+	}
+#endif
+
+
+	PIOS_WDG_Clear();
+	PIOS_DELAY_WaitmS(150);
 	PIOS_WDG_Clear();
 
 #endif	/* PIOS_INCLUDE_I2C */
