@@ -40,20 +40,53 @@
 
 
 /* Private constants */
-#define MPU9250_TASK_PRIORITY	(tskIDLE_PRIORITY + configMAX_PRIORITIES - 1)	// max priority
-#define MPU9250_TASK_STACK		(768 / 4)
+#define MPU9250_TASK_PRIORITY   (tskIDLE_PRIORITY + configMAX_PRIORITIES - 1)	// max priority
+#define MPU9250_TASK_STACK      (768 / 4)
 
-#define MPU9250_WHOAMI_ID        0x71
+#define MPU9250_WHOAMI_ID       0x71
 
 #ifdef PIOS_MPU9250_SPI_HIGH_SPEED
-#define MPU9250_SPI_HIGH_SPEED			PIOS_MPU9250_SPI_HIGH_SPEED
+#define MPU9250_SPI_HIGH_SPEED              PIOS_MPU9250_SPI_HIGH_SPEED
 #else
-#define MPU9250_SPI_HIGH_SPEED			20000000
+#define MPU9250_SPI_HIGH_SPEED              20000000
 #endif
-#define MPU9250_SPI_LOW_SPEED			300000
+#define MPU9250_SPI_LOW_SPEED               300000
 
-#define PIOS_MPU9250_ACCEL_DLPF_CFG_REG 0x1D
+#define PIOS_MPU9250_ACCEL_DLPF_CFG_REG     0x1D
+#define PIOS_MPU9250_SLV0_ADDR_REG          0x25
+#define PIOS_MPU9250_SLV0_REG_REG           0x26
+#define PIOS_MPU9250_SLV0_CTRL_REG          0x27
+#define PIOS_MPU9250_SLV4_ADDR_REG          0x31
+#define PIOS_MPU9250_SLV4_REG_REG           0x32
+#define PIOS_MPU9250_SLV4_DO_REG            0x33
+#define PIOS_MPU9250_SLV4_CTRL_REG          0x34
+#define PIOS_MPU9250_SLV4_DI_REG            0x35
+#define PIOS_MPU9250_I2C_MST_STATUS_REG     0x36
 
+#define PIOS_MPU9250_I2C_MST_SLV4_DONE      0x40
+#define PIOS_MPU9250_I2C_MST_LOST_ARB       0x20
+#define PIOS_MPU9250_I2C_MST_SLV4_NACK      0x10
+#define PIOS_MPU9250_I2C_MST_SLV0_NACK      0x01
+
+#define PIOS_MPU9250_I2CSLV_EN              0x80
+#define PIOS_MPU9250_I2CSLV_BYTE_SW         0x40
+#define PIOS_MPU9250_I2CSLV_REG_DIS         0x20
+#define PIOS_MPU9250_I2CSLV_GRP             0x10
+
+#define PIOS_MPU9250_AK8963_ADDR            0x0C
+
+#define AK8963_WHOAMI_REG					0x00
+#define AK8963_WHOAMI_ID                    0x48
+#define AK8963_ST1_REG                      0x02
+#define AK8963_ST2_REG						0x09
+#define AK8963_ST1_DOR                      0x02
+#define AK8963_ST1_DRDY                     0x01
+#define AK8963_ST2_BITM                     0x10
+#define AK8963_ST2_HOFL                     0x08
+#define AK8963_CNTL1_REG                    0x0A
+#define AK8963_CNTL2_REG                    0x0A
+#define AK8963_CNTL2_SRST                   0x01
+#define AK8963_MODE_CONTINUOUS_FAST_16B     0x16
 
 /* Global Variables */
 
@@ -230,10 +263,95 @@ static int32_t PIOS_MPU9250_WriteReg(uint8_t reg, uint8_t data)
 }
 
 
+/**
+ * @brief Writes one byte to the AK8963 register using MPU9250 I2C master
+ * \param[in] reg Register address
+ * \param[in] data Byte to write
+ * @returns 0 when success
+ */
+static int32_t PIOS_MPU9250_Mag_WriteReg(uint8_t reg, uint8_t data)
+{
+	// we will use I2C SLV4 to manipulate with AK8963 control registers
+	if (PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV4_REG_REG, reg) != 0)
+		return -1;
+	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV4_ADDR_REG, PIOS_MPU9250_AK8963_ADDR);
+	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV4_DO_REG, data);
+	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV4_CTRL_REG, PIOS_MPU9250_I2CSLV_EN);
+	uint32_t timeout = 0;
+
+	uint8_t status = 0;
+	do {
+		if (timeout++ > 50) {
+			return -2;
+		}
+		status = PIOS_MPU9250_ReadReg(PIOS_MPU9250_I2C_MST_STATUS_REG);
+	} while ((status & PIOS_MPU9250_I2C_MST_SLV4_DONE) == 0);
+
+	if (status & PIOS_MPU9250_I2C_MST_SLV4_NACK)
+		return -3;
+
+	return 0;
+}
+
+
+/**
+ * @brief Writes one byte to the AK8963 register using MPU9250 I2C master
+ * \param[in] reg Register address
+ * \param[in] data Byte to write
+ */
+uint8_t PIOS_MPU9250_Mag_ReadReg(uint8_t reg)
+{
+	// we will use I2C SLV4 to manipulate with AK8963 control registers
+	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV4_REG_REG, reg);
+	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV4_ADDR_REG, PIOS_MPU9250_AK8963_ADDR | 0x80);
+	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV4_CTRL_REG, PIOS_MPU9250_I2CSLV_EN);
+	uint32_t timeout = 0;
+
+	uint8_t status = 0;
+	do {
+		if (timeout++ > 50) {
+			return 0;
+		}
+		status = PIOS_MPU9250_ReadReg(PIOS_MPU9250_I2C_MST_STATUS_REG);
+	} while ((status & PIOS_MPU9250_I2C_MST_SLV4_DONE) == 0);
+
+	return PIOS_MPU9250_ReadReg(PIOS_MPU9250_SLV4_DI_REG);
+}
+
+
+/**
+ * @brief Initialize the AK8963 magnetometer inside MPU9250
+ * \return 0 if success
+ *
+ */
+static int32_t PIOS_MPU9250_Mag_Config()
+{
+	uint8_t id = PIOS_MPU9250_Mag_ReadReg(AK8963_WHOAMI_REG);
+	if (id != AK8963_WHOAMI_ID)
+		return -2;
+
+	// reset AK8963
+	if (PIOS_MPU9250_Mag_WriteReg(AK8963_CNTL2_REG, AK8963_CNTL2_SRST) != 0)
+		return -3;
+
+	// give chip some time to initialize
+	PIOS_DELAY_WaitmS(2);
+
+	// set magnetometer sampling rate to 100Hz and 16-bit resolution
+	PIOS_MPU9250_Mag_WriteReg(AK8963_CNTL1_REG, AK8963_MODE_CONTINUOUS_FAST_16B);
+
+	// configure mpu9250 to read ak8963 data range from STATUS1 to STATUS2 at ODR
+	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV0_REG_REG, AK8963_ST1_REG);
+	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV0_ADDR_REG, PIOS_MPU9250_AK8963_ADDR | 0x80);
+	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV0_CTRL_REG, PIOS_MPU9250_I2CSLV_EN | 8);
+
+	return 0;
+}
+
 
 /**
  * @brief Initialize the MPU9250 gyro & accel registers
- * \return none
+ * \return 0 if successful
  * \param[in] pios_mpu9250_cfg struct to be used to configure sensor.
  *
  */
@@ -246,11 +364,22 @@ static int32_t PIOS_MPU9250_Config(struct pios_mpu9250_cfg const * cfg)
 	// give chip some time to initialize
 	PIOS_DELAY_WaitmS(50);
 
+	uint8_t id = PIOS_MPU9250_ReadReg(PIOS_MPU60X0_WHOAMI);
+	if (id != MPU9250_WHOAMI_ID)
+		return -2;
+
 	// power management config
 	PIOS_MPU9250_WriteReg(PIOS_MPU60X0_PWR_MGMT_REG, PIOS_MPU60X0_PWRMGMT_PLL_X_CLK);
 
 	// user control
 	PIOS_MPU9250_WriteReg(PIOS_MPU60X0_USER_CTRL_REG, PIOS_MPU60X0_USERCTL_DIS_I2C | PIOS_MPU60X0_USERCTL_I2C_MST_EN);
+
+
+	if (dev->cfg->use_magnetometer) {
+		if (PIOS_MPU9250_Mag_Config() != 0) {
+			return -3;
+		}
+	}
 
 	// Digital low-pass filter and scale
 	// set this before sample rate else sample rate calculation will fail
@@ -298,9 +427,7 @@ int32_t PIOS_MPU9250_SPI_Init(uint32_t spi_id, uint32_t slave_num, const struct 
 		return -2;
 
 	/* Set up EXTI line */
-	PIOS_WDG_Clear();
 	PIOS_EXTI_Init(cfg->exti_cfg);
-	// while(1) PIOS_WDG_Clear();
 
 	// Wait 5 ms for data ready interrupt and make sure it happens
 	// twice
@@ -332,6 +459,10 @@ int32_t PIOS_MPU9250_Test()
 	uint8_t id = PIOS_MPU9250_ReadReg(PIOS_MPU60X0_WHOAMI);
 	if (id != MPU9250_WHOAMI_ID)
 		return 1;
+
+	id = PIOS_MPU9250_Mag_ReadReg(AK8963_WHOAMI_REG);
+	if (id != AK8963_WHOAMI_ID)
+		return -2;
 
 	return 0;
 }
@@ -494,10 +625,8 @@ bool PIOS_MPU9250_IRQHandler(void)
 
 static void PIOS_MPU9250_Task(void *parameters)
 {
-	// static int test = 0;
 	while (1) {
 		//Wait for data ready interrupt
-		// PIOS_WDG_Clear();
 		if (PIOS_Semaphore_Take(dev->data_ready_sema, PIOS_SEMAPHORE_TIMEOUT_MAX) != true)
 			continue;
 
@@ -517,31 +646,37 @@ static void PIOS_MPU9250_Task(void *parameters)
 		    IDX_GYRO_YOUT_L,
 		    IDX_GYRO_ZOUT_H,
 		    IDX_GYRO_ZOUT_L,
+		    IDX_MAG_ST1,
+		    IDX_MAG_XOUT_L,
+		    IDX_MAG_XOUT_H,
+		    IDX_MAG_YOUT_L,
+		    IDX_MAG_YOUT_H,
+		    IDX_MAG_ZOUT_L,
+		    IDX_MAG_ZOUT_H,
+		    IDX_MAG_ST2,
 		    BUFFER_SIZE,
 		};
 
 
 		uint8_t mpu9250_rec_buf[BUFFER_SIZE];
-		uint8_t mpu9250_tx_buf[BUFFER_SIZE] = {PIOS_MPU60X0_ACCEL_X_OUT_MSB | 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+		uint8_t mpu9250_tx_buf[BUFFER_SIZE] = {PIOS_MPU60X0_ACCEL_X_OUT_MSB | 0x80, 0, 0, 0, 0, 0,
+				0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
+		uint8_t transfer_size = (dev->cfg->use_magnetometer) ? BUFFER_SIZE : BUFFER_SIZE - 8;
 		// claim bus in high speed mode
 		if (PIOS_MPU9250_ClaimBus(false) != 0)
 			continue;
 
-		if (PIOS_SPI_TransferBlock(dev->spi_id, mpu9250_tx_buf, mpu9250_rec_buf, sizeof(mpu9250_rec_buf), 0) < 0) {
+		if (PIOS_SPI_TransferBlock(dev->spi_id, mpu9250_tx_buf, mpu9250_rec_buf, transfer_size, 0) < 0) {
 			PIOS_MPU9250_ReleaseBus(false);
 			continue;
 		}
 
 		PIOS_MPU9250_ReleaseBus(false);
-		// Rotate the sensor to OP convention.  The datasheet defines X as towards the right
-		// and Y as forward.  OP convention transposes this.  Also the Z is defined negatively
-		// to our convention
 
-		// Currently we only support rotations on top so switch X/Y accordingly
 		struct pios_sensor_accel_data accel_data;
 		struct pios_sensor_gyro_data gyro_data;
-		// struct pios_sensor_mag_data mag_data;
+		struct pios_sensor_mag_data mag_data;
 
 		float accel_x = (int16_t)(mpu9250_rec_buf[IDX_ACCEL_XOUT_H] << 8 | mpu9250_rec_buf[IDX_ACCEL_XOUT_L]);
 		float accel_y = (int16_t)(mpu9250_rec_buf[IDX_ACCEL_YOUT_H] << 8 | mpu9250_rec_buf[IDX_ACCEL_YOUT_L]);
@@ -549,7 +684,13 @@ static void PIOS_MPU9250_Task(void *parameters)
 		float gyro_x = (int16_t)(mpu9250_rec_buf[IDX_GYRO_XOUT_H] << 8 | mpu9250_rec_buf[IDX_GYRO_XOUT_L]);
 		float gyro_y = (int16_t)(mpu9250_rec_buf[IDX_GYRO_YOUT_H] << 8 | mpu9250_rec_buf[IDX_GYRO_YOUT_L]);
 		float gyro_z = (int16_t)(mpu9250_rec_buf[IDX_GYRO_ZOUT_H] << 8 | mpu9250_rec_buf[IDX_GYRO_ZOUT_L]);
+		float mag_x = (int16_t)(mpu9250_rec_buf[IDX_MAG_XOUT_H] << 8 | mpu9250_rec_buf[IDX_MAG_XOUT_L]);
+		float mag_y = (int16_t)(mpu9250_rec_buf[IDX_MAG_YOUT_H] << 8 | mpu9250_rec_buf[IDX_MAG_YOUT_L]);
+		float mag_z = (int16_t)(mpu9250_rec_buf[IDX_MAG_ZOUT_H] << 8 | mpu9250_rec_buf[IDX_MAG_ZOUT_L]);
 
+		// Rotate the sensor to OP convention.  The datasheet defines X as towards the right
+		// and Y as forward.  OP convention transposes this.  Also the Z is defined negatively
+		// to our convention. Magnetometer match OP convention.
 		switch (dev->cfg->orientation) {
 		case PIOS_MPU9250_TOP_0DEG:
 			accel_data.y = accel_x;
@@ -558,7 +699,9 @@ static void PIOS_MPU9250_Task(void *parameters)
 			gyro_data.y  = gyro_x;
 			gyro_data.x  = gyro_y;
 			gyro_data.z  = - gyro_z;
-
+			mag_data.x   = mag_x;
+			mag_data.y   = mag_y;
+			mag_data.z   = mag_z;
 			break;
 		case PIOS_MPU9250_TOP_90DEG:
 			accel_data.y = - accel_y;
@@ -567,8 +710,9 @@ static void PIOS_MPU9250_Task(void *parameters)
 			gyro_data.y  = - gyro_y;
 			gyro_data.x  = gyro_x;
 			gyro_data.z  = - gyro_z;
-
-
+			mag_data.x   = - mag_y;
+			mag_data.y   = mag_x;
+			mag_data.z   = mag_z;
 			break;
 		case PIOS_MPU9250_TOP_180DEG:
 			accel_data.y = - accel_x;
@@ -577,6 +721,10 @@ static void PIOS_MPU9250_Task(void *parameters)
 			gyro_data.y  = - gyro_x;
 			gyro_data.x  = - gyro_y;
 			gyro_data.z  = - gyro_z;
+			mag_data.x   = - mag_x;
+			mag_data.y   = - mag_y;
+			mag_data.z   = mag_z;
+
 			break;
 		case PIOS_MPU9250_TOP_270DEG:
 			accel_data.y = accel_y;
@@ -585,6 +733,9 @@ static void PIOS_MPU9250_Task(void *parameters)
 			gyro_data.y  = gyro_y;
 			gyro_data.x  = - gyro_x;
 			gyro_data.z  = - gyro_z;
+			mag_data.x   = mag_y;
+			mag_data.y   = - mag_x;
+			mag_data.z   = mag_z;
 			break;
 		case PIOS_MPU9250_BOTTOM_0DEG:
 			accel_data.y = - accel_x;
@@ -593,6 +744,9 @@ static void PIOS_MPU9250_Task(void *parameters)
 			gyro_data.y  = - gyro_x;
 			gyro_data.x  = gyro_y;
 			gyro_data.z  = gyro_z;
+			mag_data.x   = mag_x;
+			mag_data.y   = - mag_y;
+			mag_data.z   = - mag_z;
 			break;
 
 		case PIOS_MPU9250_BOTTOM_90DEG:
@@ -602,6 +756,9 @@ static void PIOS_MPU9250_Task(void *parameters)
 			gyro_data.y  = - gyro_y;
 			gyro_data.x  = - gyro_x;
 			gyro_data.z  = gyro_z;
+			mag_data.x   = - mag_y;
+			mag_data.y   = - mag_x;
+			mag_data.z   = - mag_z;
 			break;
 
 		case PIOS_MPU9250_BOTTOM_180DEG:
@@ -611,6 +768,9 @@ static void PIOS_MPU9250_Task(void *parameters)
 			gyro_data.y  = gyro_x;
 			gyro_data.x  = - gyro_y;
 			gyro_data.z  = gyro_z;
+			mag_data.x   = - mag_x;
+			mag_data.y   = mag_y;
+			mag_data.z   = - mag_z;
 			break;
 
 		case PIOS_MPU9250_BOTTOM_270DEG:
@@ -620,6 +780,9 @@ static void PIOS_MPU9250_Task(void *parameters)
 			gyro_data.x  = gyro_x;
 			gyro_data.z  = gyro_z;
 			accel_data.z = accel_z;
+			mag_data.x   = mag_y;
+			mag_data.y   = mag_x;
+			mag_data.z   = - mag_z;
 			break;
 
 		}
@@ -643,50 +806,15 @@ static void PIOS_MPU9250_Task(void *parameters)
 		xQueueSendToBack(dev->accel_queue, (void *)&accel_data, 0);
 		xQueueSendToBack(dev->gyro_queue, (void *)&gyro_data, 0);
 
-//		test++;
-//		if (test % 1000 == 0) {
-//			int i = 0;
-//			DEBUG_PRINTF(0, "\r\nrecbuf = ")
-//			for (i = 0; i < BUFFER_SIZE; i++)
-//				DEBUG_PRINTF(0, "0x%02x,", mpu9250_rec_buf[i]);
-//		}
-
-		// Check for mag data ready.  Reading it clears this flag.
-//		if (PIOS_MPU9250_Mag_GetReg(MPU9250_MAG_STATUS) > 0) {
-//			struct pios_sensor_mag_data mag_data;
-//			uint8_t mpu9250_mag_buffer[6];
-//			if (PIOS_MPU9250_Mag_Read(MPU9250_MAG_XH, mpu9250_mag_buffer, sizeof(mpu9250_mag_buffer)) == 0) {
-//				switch(dev->cfg->orientation) {
-//				case PIOS_MPU9250_TOP_0DEG:
-//					mag_data.x = (int16_t) (mpu9250_mag_buffer[1] << 0x08 | mpu9250_mag_buffer[0]);
-//					mag_data.y = (int16_t) (mpu9250_mag_buffer[3] << 0x08 | mpu9250_mag_buffer[2]);
-//					break;
-//				case PIOS_MPU9250_TOP_90DEG:
-//					mag_data.y = (int16_t)  (mpu9250_mag_buffer[1] << 0x08 | mpu9250_mag_buffer[0]);
-//					mag_data.x = (int16_t) -(mpu9250_mag_buffer[3] << 0x08 | mpu9250_mag_buffer[2]);
-//					break;
-//				case PIOS_MPU9250_TOP_180DEG:
-//					mag_data.x = (int16_t) -(mpu9250_mag_buffer[1] << 0x08 | mpu9250_mag_buffer[0]);
-//					mag_data.y = (int16_t) -(mpu9250_mag_buffer[3] << 0x08 | mpu9250_mag_buffer[2]);
-//					break;
-//				case PIOS_MPU9250_TOP_270DEG:
-//					mag_data.y = (int16_t) -(mpu9250_mag_buffer[1] << 0x08 | mpu9250_mag_buffer[0]);
-//					mag_data.x = (int16_t)  (mpu9250_mag_buffer[3] << 0x08 | mpu9250_mag_buffer[2]);
-//					break;
-//				}
-//				mag_data.z = (int16_t) (mpu9250_mag_buffer[5] << 0x08 | mpu9250_mag_buffer[4]);
-//
-//				float mag_scale = PIOS_MPU9250_GetMagScale();
-//				mag_data.x *= mag_scale;
-//				mag_data.y *= mag_scale;
-//				mag_data.z *= mag_scale;
-//
-//				// Trigger another measurement
-//				PIOS_MPU9250_Mag_SetReg(MPU9250_MAG_CNTR, 0x01);
-//
-//				xQueueSendToBack(dev->mag_queue, (void *) &mag_data, 0);
-//			}
-//		}
+		if (dev->cfg->use_magnetometer) {
+			uint8_t st1 = mpu9250_rec_buf[IDX_MAG_ST1];
+			if (st1 & AK8963_ST1_DRDY) {
+				mag_data.x *= 1.5f;
+				mag_data.y *= 1.5f;
+				mag_data.z *= 1.5f;
+				xQueueSendToBack(dev->mag_queue, (void *)&mag_data, 0);
+			}
+		}
 	}
 }
 
