@@ -56,10 +56,10 @@
 #define PIOS_MPU9250_ACCEL_DLPF_CFG_REG     0x1D
 
 #define PIOS_MPU9250_AK8963_ADDR            0x0C
-#define AK8963_WHOAMI_REG					0x00
+#define AK8963_WHOAMI_REG                   0x00
 #define AK8963_WHOAMI_ID                    0x48
 #define AK8963_ST1_REG                      0x02
-#define AK8963_ST2_REG						0x09
+#define AK8963_ST2_REG                      0x09
 #define AK8963_ST1_DOR                      0x02
 #define AK8963_ST1_DRDY                     0x01
 #define AK8963_ST2_BITM                     0x10
@@ -456,7 +456,6 @@ int32_t PIOS_MPU9250_Test()
  * @returns 0 if successful
  * @param range[in] gyroscope range
  */
-
 int32_t PIOS_MPU9250_SetGyroRange(enum pios_mpu60x0_range range)
 {
 	if (PIOS_MPU9250_WriteReg(PIOS_MPU60X0_GYRO_CFG_REG, range) != 0)
@@ -487,7 +486,6 @@ int32_t PIOS_MPU9250_SetGyroRange(enum pios_mpu60x0_range range)
  * @returns 0 if success
  * @param range[in] accelerometer range
  */
-
 int32_t PIOS_MPU9250_SetAccelRange(enum pios_mpu60x0_accel_range range)
 {
 	if (PIOS_MPU9250_WriteReg(PIOS_MPU60X0_ACCEL_CFG_REG, range) != 0)
@@ -502,7 +500,6 @@ int32_t PIOS_MPU9250_SetAccelRange(enum pios_mpu60x0_accel_range range)
  * @returns 0 if successful
  * @param samplerate_hz[in] Sampling frequency in Hz
  */
-
 int32_t PIOS_MPU9250_SetSampleRate(uint16_t samplerate_hz)
 {
 	// mpu9250 ODR divider is unable to run from 8kHz clock like mpu60x0 :(
@@ -536,7 +533,6 @@ int32_t PIOS_MPU9250_SetSampleRate(uint16_t samplerate_hz)
  * @brief Set gyroscope lowpass filter cut-off frequency
  * @param filter[in] Filter frequency
  */
-
 void PIOS_MPU9250_SetGyroLPF(enum pios_mpu9250_gyro_filter filter)
 {
 	PIOS_MPU9250_WriteReg(PIOS_MPU60X0_DLPF_CFG_REG, filter);
