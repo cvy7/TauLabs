@@ -75,7 +75,7 @@ static const struct pios_ms5611_cfg pios_ms5611_cfg = {
 /**
  * Configuration for the MPU9250 chip
  */
-#if defined(PIOS_INCLUDE_MPU9250)
+#if defined(PIOS_INCLUDE_MPU9250_SPI)
 #include "pios_mpu9250.h"
 	static const struct pios_exti_cfg pios_exti_mpu9250_cfg __exti_config = {
 		.vector = PIOS_MPU9250_IRQHandler,
@@ -1002,7 +1002,7 @@ void PIOS_Board_Init(void) {
 #endif
 
 	PIOS_WDG_Clear();
-#if defined (PIOS_INCLUDE_MPU9250) && defined(PIOS_INCLUDE_SPI)
+#if defined (PIOS_INCLUDE_MPU9250_SPI) && defined(PIOS_INCLUDE_SPI)
 	{
 		const struct pios_mpu9250_cfg *mpu9250_cfg;
 		if (hw_magnetometer == HWDRACO_MAGNETOMETER_INTERNAL) {

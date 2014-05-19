@@ -34,14 +34,15 @@
 #include "pios_semaphore.h"
 #include "physical_constants.h"
 
-#if defined(PIOS_INCLUDE_MPU9250)
+#if defined(PIOS_INCLUDE_MPU9250_SPI)
 
 #include "pios_mpu9250.h"
 
 
 /* Private constants */
 #define MPU9250_TASK_PRIORITY   (tskIDLE_PRIORITY + configMAX_PRIORITIES - 1)	// max priority
-#define MPU9250_TASK_STACK      (768 / 4)
+#define MPU9250_TASK_STACK      (512 / 4)
+#define PIOS_MPU9250_MAX_DOWNSAMPLE 2
 
 #define MPU9250_WHOAMI_ID       0x71
 
@@ -53,28 +54,8 @@
 #define MPU9250_SPI_LOW_SPEED               300000
 
 #define PIOS_MPU9250_ACCEL_DLPF_CFG_REG     0x1D
-#define PIOS_MPU9250_SLV0_ADDR_REG          0x25
-#define PIOS_MPU9250_SLV0_REG_REG           0x26
-#define PIOS_MPU9250_SLV0_CTRL_REG          0x27
-#define PIOS_MPU9250_SLV4_ADDR_REG          0x31
-#define PIOS_MPU9250_SLV4_REG_REG           0x32
-#define PIOS_MPU9250_SLV4_DO_REG            0x33
-#define PIOS_MPU9250_SLV4_CTRL_REG          0x34
-#define PIOS_MPU9250_SLV4_DI_REG            0x35
-#define PIOS_MPU9250_I2C_MST_STATUS_REG     0x36
-
-#define PIOS_MPU9250_I2C_MST_SLV4_DONE      0x40
-#define PIOS_MPU9250_I2C_MST_LOST_ARB       0x20
-#define PIOS_MPU9250_I2C_MST_SLV4_NACK      0x10
-#define PIOS_MPU9250_I2C_MST_SLV0_NACK      0x01
-
-#define PIOS_MPU9250_I2CSLV_EN              0x80
-#define PIOS_MPU9250_I2CSLV_BYTE_SW         0x40
-#define PIOS_MPU9250_I2CSLV_REG_DIS         0x20
-#define PIOS_MPU9250_I2CSLV_GRP             0x10
 
 #define PIOS_MPU9250_AK8963_ADDR            0x0C
-
 #define AK8963_WHOAMI_REG					0x00
 #define AK8963_WHOAMI_ID                    0x48
 #define AK8963_ST1_REG                      0x02
@@ -94,7 +75,6 @@ enum pios_mpu9250_dev_magic {
 	PIOS_MPU9250_DEV_MAGIC = 0xb8a9624f,
 };
 
-#define PIOS_MPU9250_MAX_DOWNSAMPLE 2
 struct mpu9250_dev {
 	uint32_t spi_id;
 	uint32_t slave_num;
@@ -272,22 +252,25 @@ static int32_t PIOS_MPU9250_WriteReg(uint8_t reg, uint8_t data)
 static int32_t PIOS_MPU9250_Mag_WriteReg(uint8_t reg, uint8_t data)
 {
 	// we will use I2C SLV4 to manipulate with AK8963 control registers
-	if (PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV4_REG_REG, reg) != 0)
+	if (PIOS_MPU9250_WriteReg(PIOS_MPU60X0_SLV4_REG_REG, reg) != 0)
 		return -1;
-	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV4_ADDR_REG, PIOS_MPU9250_AK8963_ADDR);
-	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV4_DO_REG, data);
-	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV4_CTRL_REG, PIOS_MPU9250_I2CSLV_EN);
+	PIOS_MPU9250_WriteReg(PIOS_MPU60X0_SLV4_ADDR_REG, PIOS_MPU9250_AK8963_ADDR);
+	PIOS_MPU9250_WriteReg(PIOS_MPU60X0_SLV4_DO_REG, data);
+	PIOS_MPU9250_WriteReg(PIOS_MPU60X0_SLV4_CTRL_REG, PIOS_MPU60X0_I2CSLV_EN);
 	uint32_t timeout = 0;
 
+	// wait for I2C transaction done, use simple safety
+	// escape counter to prevent endless loop in case
+	// MPU9250 is broken
 	uint8_t status = 0;
 	do {
 		if (timeout++ > 50) {
 			return -2;
 		}
-		status = PIOS_MPU9250_ReadReg(PIOS_MPU9250_I2C_MST_STATUS_REG);
-	} while ((status & PIOS_MPU9250_I2C_MST_SLV4_DONE) == 0);
+		status = PIOS_MPU9250_ReadReg(PIOS_MPU60X0_I2C_MST_STATUS_REG);
+	} while ((status & PIOS_MPU60X0_I2C_MST_SLV4_DONE) == 0);
 
-	if (status & PIOS_MPU9250_I2C_MST_SLV4_NACK)
+	if (status & PIOS_MPU60X0_I2C_MST_SLV4_NACK)
 		return -3;
 
 	return 0;
@@ -299,23 +282,26 @@ static int32_t PIOS_MPU9250_Mag_WriteReg(uint8_t reg, uint8_t data)
  * \param[in] reg Register address
  * \param[in] data Byte to write
  */
-uint8_t PIOS_MPU9250_Mag_ReadReg(uint8_t reg)
+static uint8_t PIOS_MPU9250_Mag_ReadReg(uint8_t reg)
 {
 	// we will use I2C SLV4 to manipulate with AK8963 control registers
-	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV4_REG_REG, reg);
-	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV4_ADDR_REG, PIOS_MPU9250_AK8963_ADDR | 0x80);
-	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV4_CTRL_REG, PIOS_MPU9250_I2CSLV_EN);
+	PIOS_MPU9250_WriteReg(PIOS_MPU60X0_SLV4_REG_REG, reg);
+	PIOS_MPU9250_WriteReg(PIOS_MPU60X0_SLV4_ADDR_REG, PIOS_MPU9250_AK8963_ADDR | 0x80);
+	PIOS_MPU9250_WriteReg(PIOS_MPU60X0_SLV4_CTRL_REG, PIOS_MPU60X0_I2CSLV_EN);
 	uint32_t timeout = 0;
 
+	// wait for I2C transaction done, use simple safety
+	// escape counter to prevent endless loop in case
+	// MPU9250 is broken
 	uint8_t status = 0;
 	do {
 		if (timeout++ > 50) {
 			return 0;
 		}
-		status = PIOS_MPU9250_ReadReg(PIOS_MPU9250_I2C_MST_STATUS_REG);
-	} while ((status & PIOS_MPU9250_I2C_MST_SLV4_DONE) == 0);
+		status = PIOS_MPU9250_ReadReg(PIOS_MPU60X0_I2C_MST_STATUS_REG);
+	} while ((status & PIOS_MPU60X0_I2C_MST_SLV4_DONE) == 0);
 
-	return PIOS_MPU9250_ReadReg(PIOS_MPU9250_SLV4_DI_REG);
+	return PIOS_MPU9250_ReadReg(PIOS_MPU60X0_SLV4_DI_REG);
 }
 
 
@@ -341,9 +327,9 @@ static int32_t PIOS_MPU9250_Mag_Config()
 	PIOS_MPU9250_Mag_WriteReg(AK8963_CNTL1_REG, AK8963_MODE_CONTINUOUS_FAST_16B);
 
 	// configure mpu9250 to read ak8963 data range from STATUS1 to STATUS2 at ODR
-	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV0_REG_REG, AK8963_ST1_REG);
-	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV0_ADDR_REG, PIOS_MPU9250_AK8963_ADDR | 0x80);
-	PIOS_MPU9250_WriteReg(PIOS_MPU9250_SLV0_CTRL_REG, PIOS_MPU9250_I2CSLV_EN | 8);
+	PIOS_MPU9250_WriteReg(PIOS_MPU60X0_SLV0_REG_REG, AK8963_ST1_REG);
+	PIOS_MPU9250_WriteReg(PIOS_MPU60X0_SLV0_ADDR_REG, PIOS_MPU9250_AK8963_ADDR | 0x80);
+	PIOS_MPU9250_WriteReg(PIOS_MPU60X0_SLV0_CTRL_REG, PIOS_MPU60X0_I2CSLV_EN | 8);
 
 	return 0;
 }
@@ -387,15 +373,14 @@ static int32_t PIOS_MPU9250_Config(struct pios_mpu9250_cfg const * cfg)
 	PIOS_MPU9250_SetGyroLPF(cfg->default_gyro_filter);
 
 	// Sample rate
-	PIOS_MPU9250_SetSampleRate(cfg->default_samplerate);
+	if (PIOS_MPU9250_SetSampleRate(cfg->default_samplerate) != 0)
+		return -4;
 
 	// Set the gyro scale
 	PIOS_MPU9250_SetGyroRange(PIOS_MPU60X0_SCALE_500_DEG);
 
 	// Set the accel scale
 	PIOS_MPU9250_SetAccelRange(PIOS_MPU60X0_ACCEL_8G);
-
-	// TODO mag config
 
 	// Interrupt configuration
 	PIOS_MPU9250_WriteReg(PIOS_MPU60X0_INT_CFG_REG, cfg->interrupt_cfg);
@@ -407,8 +392,8 @@ static int32_t PIOS_MPU9250_Config(struct pios_mpu9250_cfg const * cfg)
 }
 
 /**
- * @brief Initialize the MPU9250 3-axis gyro sensor.
- * @return 0 for success, -1 for failure to allocate, -2 for failure to get irq
+ * @brief Initialize the MPU9250 9-axis sensor.
+ * @return 0 for success, -1 for failure to allocate, -10 for failure to get irq
  */
 int32_t PIOS_MPU9250_SPI_Init(uint32_t spi_id, uint32_t slave_num, const struct pios_mpu9250_cfg * cfg)
 {
@@ -420,8 +405,6 @@ int32_t PIOS_MPU9250_SPI_Init(uint32_t spi_id, uint32_t slave_num, const struct 
 	dev->slave_num = slave_num;
 	dev->cfg = cfg;
 
-	// DEBUG_PRINTF(0, "who am i = 0x%02x", who);
-
 	/* Configure the MPU9250 Sensor */
 	if (PIOS_MPU9250_Config(cfg) != 0)
 		return -2;
@@ -429,7 +412,7 @@ int32_t PIOS_MPU9250_SPI_Init(uint32_t spi_id, uint32_t slave_num, const struct 
 	/* Set up EXTI line */
 	PIOS_EXTI_Init(cfg->exti_cfg);
 
-	// Wait 5 ms for data ready interrupt and make sure it happens
+	// Wait 20 ms for data ready interrupt and make sure it happens
 	// twice
 	if ((PIOS_Semaphore_Take(dev->data_ready_sema, 20) != true) ||
 		(PIOS_Semaphore_Take(dev->data_ready_sema, 20) != true)) {
@@ -522,7 +505,9 @@ int32_t PIOS_MPU9250_SetAccelRange(enum pios_mpu60x0_accel_range range)
 
 int32_t PIOS_MPU9250_SetSampleRate(uint16_t samplerate_hz)
 {
-	// mpu9250 ODR divider is unable to run from 8kHz clock :(
+	// mpu9250 ODR divider is unable to run from 8kHz clock like mpu60x0 :(
+	// check if someone want to use 250Hz DLPF and don't want 8kHz sampling
+	// and politely refuse him
 	if ((dev->gyro_filter == PIOS_MPU9250_GYRO_LOWPASS_250_HZ) && (samplerate_hz != 8000)) {
 		return -1;
 	}
@@ -560,7 +545,7 @@ void PIOS_MPU9250_SetGyroLPF(enum pios_mpu9250_gyro_filter filter)
 }
 
 /**
- * @brief Set accelerometer lowepass filter cut-off frequency
+ * @brief Set accelerometer lowpass filter cut-off frequency
  * @param filter[in] Filter frequency
  */
 void PIOS_MPU9250_SetAccelLPF(enum pios_mpu9250_accel_filter filter)
@@ -609,7 +594,7 @@ static float PIOS_MPU9250_GetAccelScale()
 }
 
 /**
-* @brief IRQ Handler.  Read all the data from onboard buffer
+* @brief IRQ Handler.  Notice MPU9250 task to read all sensors data.
 */
 bool PIOS_MPU9250_IRQHandler(void)
 {
@@ -690,7 +675,7 @@ static void PIOS_MPU9250_Task(void *parameters)
 
 		// Rotate the sensor to OP convention.  The datasheet defines X as towards the right
 		// and Y as forward.  OP convention transposes this.  Also the Z is defined negatively
-		// to our convention. Magnetometer match OP convention.
+		// to our convention. This is true for accels and gyros. Magnetometer corresponds OP convention.
 		switch (dev->cfg->orientation) {
 		case PIOS_MPU9250_TOP_0DEG:
 			accel_data.y = accel_x;
