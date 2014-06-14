@@ -44,6 +44,7 @@
 #include "waypointactive.h"
 #include "waypoint.h"
 #include "homelocation.h"
+#include "flighttelemetrystats.h"
 #include "hwdraco.h"
 
 #if defined(PIOS_DRACO_OSD_STACK_SIZE)
@@ -70,6 +71,18 @@
 
 #define HUD_UNITS_METRIC            0
 #define HUD_UNITS_IMPERIAL          1
+#define HUD_LED_RED                 0
+#define HUD_LED_GREEN               1
+#define HUD_LED_BLUE                2
+#define HUD_LED_ORANGE              3
+#define HUD_LED_MODE_OFF            0
+#define HUD_LED_MODE_ON             1
+#define HUD_LED_MODE_BLINK_SLOW     2
+#define HUD_LED_MODE_BLINK_FAST     3
+#define HUD_LED_ARMED               HUD_LED_GREEN
+#define HUD_LED_GPS                 HUD_LED_BLUE
+#define HUD_LED_TELEMETRY           HUD_LED_ORANGE
+#define HUD_LED_ALARM               HUD_LED_RED
 
 enum HudWaypointType {
 	HUD_WAYPOINT_HOME,
@@ -129,6 +142,7 @@ static FlightBatteryStateData flightBatteryState;
 static VelocityActualData velocityActual;
 static FlightStatusData flightStatus;
 static WaypointData waypointActual;
+static FlightTelemetryStatsData telemetryStats;
 
 static void dracoOsdTask(void *parameters);
 
@@ -153,20 +167,58 @@ static int32_t getVersion(void)
 }
 
 /**
- * Test for gps is valid indication
+ * Test GPS status
  * GPS must be fixed in 3D mode and home location set
- * @return whether GPS valid
+ * @return 0 when gps not detected, 1 when GPS detected, 2 when GPS 3D fixed and home location set
  */
-static bool gpsValid(void)
+static uint8_t getGpsStatus(void)
 {
+	uint8_t status = 0;
+	if (gpsPosition.Status == GPSPOSITION_STATUS_NOGPS)
+		return status;
+
+	status = 1;
+
 	uint8_t locationSet = HOMELOCATION_SET_FALSE;
 	HomeLocationSetGet(&locationSet);
 	if ((locationSet == HOMELOCATION_SET_TRUE) &&
 			((gpsPosition.Status == GPSPOSITION_STATUS_FIX3D) ||
 					(gpsPosition.Status == GPSPOSITION_STATUS_DIFF3D)))
-		return true;
+		status = 2;
 
-	return false;
+	return status;
+}
+
+/**
+ * Determine if important alarms are in critical or warning states
+ * @return 0 if no alarm, 1 if important alarm(s) is in warning state, 2 if important alarm is in error state
+ */
+static uint8_t getAlarmStatus(void)
+{
+	// read alarms
+	SystemAlarmsData alarms;
+	SystemAlarmsGet(&alarms);
+	uint8_t status = 0;
+
+	// Check each alarm
+	for (int i = 0; i < SYSTEMALARMS_ALARM_NUMELEM; i++)
+	{
+		if (alarms.Alarm[i] == SYSTEMALARMS_ALARM_WARNING &&
+			i != SYSTEMALARMS_ALARM_GPS &&
+			i != SYSTEMALARMS_ALARM_TELEMETRY)
+		{
+			status = 1;
+		}
+
+		if (alarms.Alarm[i] >= SYSTEMALARMS_ALARM_ERROR &&
+			i != SYSTEMALARMS_ALARM_GPS &&
+			i != SYSTEMALARMS_ALARM_TELEMETRY)
+		{
+			return 2;
+		}
+	}
+
+	return status;
 }
 
 /**
@@ -259,7 +311,7 @@ static void hudSendGnss(void)
 {
 	struct DataGnss gnss;
 	memset(&gnss, 0, sizeof(struct DataGnss));
-	if (gpsValid())
+	if (getGpsStatus() == 2)
 		gnss.fix = 1;
 	else
 		gnss.fix = 0;
@@ -364,6 +416,20 @@ static void hudSetupStopwatch(void)
 }
 
 /**
+ * Control LEDs connected to OSD MCU
+ * @param[in] led select led
+ * @param[in] mode select mode
+ */
+static void hudControlLed(uint8_t led, uint8_t mode)
+{
+	txPayload[0] = DATA_ID_LED_CONTROL;
+	txPayload[1] = led;
+	txPayload[2] = mode;
+
+	draco_osd_comm_send_data(txPayload, 3);
+}
+
+/**
  * Send waypoint informations
  * @param[in] type waypoint type
  * @param[in] show show waypoint when true, disable waypoint when false
@@ -434,8 +500,6 @@ void draco_osd_task_start(void)
  */
 static void dracoOsdTask(void *parameters)
 {
-	bool useBattery = false;
-	bool firstPass = true;
 	portTickType lastTime = xTaskGetTickCount();
 
 	vTaskDelay(MS2TICKS(100));
@@ -455,6 +519,7 @@ static void dracoOsdTask(void *parameters)
 	else
 		hudSetUnits(HUD_UNITS_METRIC);
 
+	bool useBattery = false;
 	if (FlightBatterySettingsHandle() != 0) {
 		FlightBatterySettingsData batterySettings;
 		FlightBatterySettingsGet(&batterySettings);
@@ -464,6 +529,10 @@ static void dracoOsdTask(void *parameters)
 		useBattery = true;
 	}
 
+	bool firstPass = true;
+	uint8_t gpsStatusLast = 0;
+	uint8_t alarmStatusLast = getAlarmStatus();
+	uint8_t telemetryStatusLast = FLIGHTTELEMETRYSTATS_STATUS_DISCONNECTED;
 	while (1) {
 		draco_osd_comm_wait(1000 / TASK_RATE_HZ);
 		portTickType currentTime = xTaskGetTickCount();
@@ -502,8 +571,22 @@ static void dracoOsdTask(void *parameters)
 
 				memcpy(&flightStatus, &flightStatusNew, sizeof(FlightStatusData));
 				hudSendMode();
-				if ((armStatusChanged) || (firstPass))
+				if ((armStatusChanged) || (firstPass)) {
 					hudSetupStopwatch();
+
+					// handle ARMED LED
+					switch (flightStatus.Armed) {
+					case FLIGHTSTATUS_ARMED_ARMED:
+						hudControlLed(HUD_LED_ARMED, HUD_LED_MODE_ON);
+						break;
+					case FLIGHTSTATUS_ARMED_ARMING:
+						hudControlLed(HUD_LED_ARMED, HUD_LED_MODE_BLINK_FAST);
+						break;
+					case FLIGHTSTATUS_ARMED_DISARMED:
+						hudControlLed(HUD_LED_ARMED, HUD_LED_MODE_BLINK_SLOW);
+						break;
+					}
+				}
 			}
 		}
 		bool showNaviWp = false;
@@ -518,9 +601,62 @@ static void dracoOsdTask(void *parameters)
 			}
 		}
 
-		if (gpsValid())
+		uint8_t gpsStatus = getGpsStatus();
+		if (gpsStatus == 2)
 			hudSendWaypoints(showNaviWp);
 
+		// handle GPS LED
+		if ((gpsStatus != gpsStatusLast) || (firstPass)) {
+			switch (gpsStatus) {
+			case 0:
+				hudControlLed(HUD_LED_GPS, HUD_LED_MODE_OFF);
+				break;
+			case 1:
+				hudControlLed(HUD_LED_GPS, HUD_LED_MODE_BLINK_FAST);
+				break;
+			case 2:
+				hudControlLed(HUD_LED_GPS, HUD_LED_MODE_ON);
+				break;
+			}
+		}
+
+		// handle telemetry LED
+		if (FlightTelemetryStatsHandle() != 0) {
+			FlightTelemetryStatsGet(&telemetryStats);
+			uint8_t telemetryStatus = telemetryStats.Status;
+			if ((telemetryStatus != telemetryStatusLast) || (firstPass)) {
+				switch (telemetryStatus) {
+				case FLIGHTTELEMETRYSTATS_STATUS_CONNECTED:
+					hudControlLed(HUD_LED_TELEMETRY, HUD_LED_MODE_ON);
+					break;
+				case FLIGHTTELEMETRYSTATS_STATUS_DISCONNECTED:
+					hudControlLed(HUD_LED_TELEMETRY, HUD_LED_MODE_OFF);
+					break;
+				default:
+					hudControlLed(HUD_LED_TELEMETRY, HUD_LED_MODE_BLINK_FAST);
+					break;
+				}
+				telemetryStatusLast = telemetryStatus;
+			}
+		}
+
+		// handle alarm LED
+		uint8_t alarmStatus = getAlarmStatus();
+		if ((alarmStatus != alarmStatusLast) || (firstPass)) {
+			switch (alarmStatus) {
+			case 0:
+				hudControlLed(HUD_LED_ALARM, HUD_LED_MODE_OFF);
+				break;
+			case 1:
+				hudControlLed(HUD_LED_ALARM, HUD_LED_MODE_BLINK_SLOW);
+				break;
+			case 2:
+				hudControlLed(HUD_LED_ALARM, HUD_LED_MODE_ON);
+				break;
+			}
+			alarmStatusLast = alarmStatus;
+		}
+		gpsStatusLast = gpsStatus;
 		firstPass = false;
 	}
 }
