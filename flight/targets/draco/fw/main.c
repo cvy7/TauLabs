@@ -30,8 +30,13 @@
 
 /* OpenPilot Includes */
 #include "openpilot.h"
+#include "pios.h"
 #include "uavobjectsinit.h"
 #include "systemmod.h"
+
+#ifdef DRACO_INCLUDE_OSD_SUPPORT
+#include "osd_task.h"
+#endif
 
 /* Task Priorities */
 #define PRIORITY_TASK_HOOKS             (tskIDLE_PRIORITY + 3)
@@ -104,6 +109,11 @@ initTask(void *parameters)
 
 	/* Initialize modules */
 	MODULE_INITIALISE_ALL(PIOS_WDG_Clear);
+
+	/* initialize draco OSD task */
+#ifdef DRACO_INCLUDE_OSD_SUPPORT
+	draco_osd_task_start();
+#endif
 
 	/* terminate this task */
 	vTaskDelete(NULL);

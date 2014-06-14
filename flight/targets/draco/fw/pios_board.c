@@ -44,7 +44,6 @@
 #include "manualcontrolsettings.h"
 #include "modulesettings.h"
 
-
 /**
  * Sensor configurations
  */
@@ -126,6 +125,49 @@ static const struct pios_ms5611_cfg pios_ms5611_cfg = {
 		.default_gyro_filter = PIOS_MPU9250_GYRO_LOWPASS_184_HZ,
 		.default_accel_filter = PIOS_MPU9250_ACCEL_LOWPASS_184_HZ,
 		.orientation = PIOS_MPU9250_BOTTOM_270DEG,
+	};
+#endif
+
+/**
+ * Configuration for the OSD SPI comm layer
+ */
+#ifdef DRACO_INCLUDE_OSD_SUPPORT
+#include "osd_spicomm.h"
+#include "osd_task.h"
+	static const struct pios_exti_cfg osd_exti_cfg __exti_config= {
+		.vector = draco_osd_comm_irq_handler,
+		.line = EXTI_Line2,
+		.pin = {
+			.gpio = GPIOE,
+			.init = {
+				.GPIO_Pin = GPIO_Pin_2,
+				.GPIO_Speed = GPIO_Speed_100MHz,
+				.GPIO_Mode = GPIO_Mode_IN,
+				.GPIO_OType = GPIO_OType_OD,
+				.GPIO_PuPd = GPIO_PuPd_UP,
+			},
+		},
+		.irq = {
+			.init = {
+				.NVIC_IRQChannel = EXTI2_IRQn,
+				.NVIC_IRQChannelPreemptionPriority = PIOS_IRQ_PRIO_LOW,
+				.NVIC_IRQChannelSubPriority = 0,
+				.NVIC_IRQChannelCmd = ENABLE,
+			},
+		},
+		.exti = {
+			.init = {
+				.EXTI_Line = EXTI_Line2, // matches above GPIO pin
+				.EXTI_Mode = EXTI_Mode_Interrupt,
+				.EXTI_Trigger = EXTI_Trigger_Falling,
+				.EXTI_LineCmd = ENABLE,
+			},
+		},
+	};
+
+	static const struct osd_comm_cfg osd_comm_config = {
+		.exti_cfg = &osd_exti_cfg,
+		.transfer_granularity = 20,
 	};
 #endif
 
@@ -324,7 +366,6 @@ void PIOS_Board_Init(void) {
 		PIOS_DEBUG_Assert(0);
 	}
 #endif
-
 
 #if defined(PIOS_INCLUDE_FLASH)
 	/* Inititialize all flash drivers */
@@ -555,7 +596,6 @@ void PIOS_Board_Init(void) {
 	if (PIOS_MS5611_SPI_Test() != 0)
 		panic(4);
 #endif
-
 
 	/* UART Xbee Port */
 	uint8_t hw_uart_xbee;
@@ -872,7 +912,6 @@ void PIOS_Board_Init(void) {
 		break;
 	}
 
-
 	/* Configure PWM inputs & outputs */
 	uint8_t hw_outputport;
 	HwDracoOutputPortGet(&hw_outputport);
@@ -903,7 +942,6 @@ void PIOS_Board_Init(void) {
 			pios_rcvr_group_map[MANUALCONTROLSETTINGS_CHANNELGROUPS_PWM] = pios_pwm_rcvr_id;
 		}
 #endif	/* PIOS_INCLUDE_PWM */
-
 
 		break;
 	}
@@ -953,7 +991,6 @@ void PIOS_Board_Init(void) {
 	break;
 	}
 
-
 #if defined(PIOS_INCLUDE_GCSRCVR)
 	GCSReceiverInitialize();
 	uintptr_t pios_gcsrcvr_id;
@@ -965,11 +1002,9 @@ void PIOS_Board_Init(void) {
 	pios_rcvr_group_map[MANUALCONTROLSETTINGS_CHANNELGROUPS_GCS] = pios_gcsrcvr_rcvr_id;
 #endif	/* PIOS_INCLUDE_GCSRCVR */
 
-
 #ifdef PIOS_DEBUG_ENABLE_DEBUG_PINS
 	PIOS_DEBUG_Init(&pios_tim_servoport_all_channels, NELEMENTS(pios_tim_servoport_all_channels));
 #endif
-
 
 	PIOS_WDG_Clear();
 
@@ -1094,13 +1129,11 @@ void PIOS_Board_Init(void) {
 	}
 #endif
 
-
 	PIOS_WDG_Clear();
 	PIOS_DELAY_WaitmS(150);
 	PIOS_WDG_Clear();
 
 #endif	/* PIOS_INCLUDE_I2C */
-
 
 #if defined(PIOS_INCLUDE_GPIO)
 	PIOS_GPIO_Init();
@@ -1112,10 +1145,13 @@ void PIOS_Board_Init(void) {
 	PIOS_ADC_Init(&pios_internal_adc_id, &pios_internal_adc_driver, internal_adc_id);
 #endif
 
+#ifdef DRACO_INCLUDE_OSD_SUPPORT
+	draco_osd_comm_init(pios_spi_internal_id, 3, &osd_comm_config);
+#endif
+
 	/* Make sure we have at least one telemetry link configured or else fail initialization */
 	PIOS_Assert(pios_com_telem_rf_id || pios_com_telem_usb_id);
 }
-
 /**
  * @}
  */

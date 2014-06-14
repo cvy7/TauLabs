@@ -29,6 +29,8 @@
 
 #ifndef PIOS_CONFIG_H
 #define PIOS_CONFIG_H
+/* target specific */
+#define DRACO_INCLUDE_OSD_SUPPORT
 
 /* Major features */
 #define PIOS_INCLUDE_FREERTOS
