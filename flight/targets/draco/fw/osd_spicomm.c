@@ -281,7 +281,7 @@ static void txGenericFrame(const uint8_t *payload, uint8_t len, uint8_t frameTyp
 /**
  * Send synchronization frame
  */
-void sendSync(void)
+static void sendSync(void)
 {
 	txGenericFrame(0, 0, FRAME_TYPE_SYNC);
 }
