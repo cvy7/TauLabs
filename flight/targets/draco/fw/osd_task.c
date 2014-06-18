@@ -334,40 +334,34 @@ static const char *getModeText(void)
 	switch (flightStatus.FlightMode) {
 	case FLIGHTSTATUS_FLIGHTMODE_ALTITUDEHOLD:
 		return "ALTHOLD";
-		break;
 	case FLIGHTSTATUS_FLIGHTMODE_AUTOTUNE:
 		return "AUTOTUNE";
-		break;
 	case FLIGHTSTATUS_FLIGHTMODE_MANUAL:
 		return "MANUAL";
-		break;
+	case FLIGHTSTATUS_FLIGHTMODE_ACRO:
+		return "ACRO";
+	case FLIGHTSTATUS_FLIGHTMODE_LEVELING:
+		return "LEVEL";
+	case FLIGHTSTATUS_FLIGHTMODE_VIRTUALBAR:
+		return "VBAR";
 	case FLIGHTSTATUS_FLIGHTMODE_PATHPLANNER:
 		return "PLANNER";
-		break;
 	case FLIGHTSTATUS_FLIGHTMODE_POSITIONHOLD:
 		return "POSHOLD";
-		break;
 	case FLIGHTSTATUS_FLIGHTMODE_RETURNTOHOME:
 		return "RTH";
-		break;
 	case FLIGHTSTATUS_FLIGHTMODE_STABILIZED1:
 		return "STAB1";
-		break;
 	case FLIGHTSTATUS_FLIGHTMODE_STABILIZED2:
 		return "STAB2";
-		break;
 	case FLIGHTSTATUS_FLIGHTMODE_STABILIZED3:
 		return "STAB3";
-		break;
 	case FLIGHTSTATUS_FLIGHTMODE_TABLETCONTROL:
 		return "TABLET";
-		break;
 	case FLIGHTSTATUS_FLIGHTMODE_VELOCITYCONTROL:
 		return "VELCTRL";
-		break;
 	default:
 		return "UNKNOWN";
-		break;
 	}
 }
 
