@@ -73,7 +73,7 @@
 		<field name="UartOnewire" units="function" type="enum" elements="1"  defaultvalue="FrSkySPort">
 			<options>
 				<option>Disabled</option>
-				<option>FrSkySPort</option>
+				<option>FrSKY SPort Telemetry</option>
 			</options>
 		</field>
 
