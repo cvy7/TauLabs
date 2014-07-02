@@ -44,6 +44,7 @@
 #include "waypointactive.h"
 #include "waypoint.h"
 #include "homelocation.h"
+#include "airspeedactual.h"
 #include "flighttelemetrystats.h"
 #include "hwdraco.h"
 
@@ -138,6 +139,7 @@ static char versionString[24];
 static AttitudeActualData attitudeActual;
 static PositionActualData positionActual;
 static GPSPositionData gpsPosition;
+static AirspeedActualData airspeedActual;
 static FlightBatteryStateData flightBatteryState;
 static VelocityActualData velocityActual;
 static FlightStatusData flightStatus;
@@ -280,7 +282,10 @@ static void hudSendPfd(void)
 	dataPfd.pitch = (int16_t)(attitudeActual.Pitch * 10.0f);
 	dataPfd.heading = (int16_t)(attitudeActual.Yaw * 10.0f);
 	float hspeed = sqrtf(powf(velocityActual.East, 2) + powf(velocityActual.North, 2));
-	dataPfd.speed = (int16_t)(hspeed * 100.0f);
+	if (AirspeedActualHandle() != 0)
+		dataPfd.speed = (int16_t)(airspeedActual.TrueAirspeed * 100.0f);
+	else
+		dataPfd.speed = (int16_t)(hspeed * 100.0f);
 	dataPfd.vspeed = (int16_t)(-velocityActual.Down * 100.0f);
 
 	txPayload[0] = DATA_ID_PFD;
@@ -542,6 +547,9 @@ static void dracoOsdTask(void *parameters)
 
 		if (PositionActualHandle() != 0)
 			PositionActualGet(&positionActual);
+
+		if (AirspeedActualHandle() != 0)
+			AirspeedActualGet(&airspeedActual);
 
 		hudSendPfd();
 
