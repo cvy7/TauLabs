@@ -141,7 +141,7 @@ static const struct frsky_value_item frsky_value_items[] = {
 	{FRSKY_AIR_SPEED_ID,   100,   frsky_encode_airspeed,   0}, // airspeed
 };
 
-static const uint8_t frsky_sensor_ids[] = {0x1b, 0x0d, /*0x34, 0x67*/};
+static const uint8_t frsky_sensor_ids[] = {0x1b, 0x0d, 0x34, 0x67};
 struct frsky_sport_telemetry {
 	xTaskHandle task;
 	uintptr_t com;
@@ -676,9 +676,7 @@ static void frsky_receive_byte(uint8_t b)
 	case FRSKY_STATE_WAIT_TX_DONE:
 		// because RX and TX are connected, we need to ignore bytes
 		// transmited by us
-		if (frsky->ignore_rx_chars)
-			frsky->ignore_rx_chars--;
-		else
+		if (--frsky->ignore_rx_chars == 0)
 			frsky->state = FRSKY_STATE_WAIT_POLL_REQUEST;
 		break;
 
@@ -701,7 +699,7 @@ static void frsky_receive_byte(uint8_t b)
 				if (GPSPositionHandle() != NULL)
 					GPSPositionGet(&frsky->gps_position);
 				// send item previously scheduled
-				if (frsky_send_scheduled_item())
+				if (frsky_send_scheduled_item() && frsky->ignore_rx_chars)
 					frsky->state = FRSKY_STATE_WAIT_TX_DONE;
 				// schedule item for next poll turn
 				frsky_schedule_next_item();
