@@ -33,6 +33,7 @@
 #include "pios.h"
 #include "uavobjectsinit.h"
 #include "systemmod.h"
+#include "hwdraco.h"
 
 #ifdef DRACO_INCLUDE_OSD_SUPPORT
 #include "osd_task.h"
@@ -112,7 +113,10 @@ initTask(void *parameters)
 
 	/* initialize draco OSD task */
 #ifdef DRACO_INCLUDE_OSD_SUPPORT
-	draco_osd_task_start();
+	uint8_t osdEnable = 0;
+	HwDracoOSDEnableGet(&osdEnable);
+	if (osdEnable == HWDRACO_OSDENABLE_ENABLED)
+		draco_osd_task_start();
 #endif
 
 	/* terminate this task */

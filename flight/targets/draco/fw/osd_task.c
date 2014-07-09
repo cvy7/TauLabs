@@ -506,10 +506,7 @@ static void dracoOsdTask(void *parameters)
 	uint8_t osdEnabled = 0;
 	HwDracoOSDEnableGet(&osdEnabled);
 
-	if (osdEnabled == HWDRACO_OSDENABLE_ENABLED)
-		hudEnable(true);
-	else
-		hudEnable(false);
+	hudEnable(true);
 
 	uint8_t osdUnits = 0;
 	HwDracoOSDUnitsGet(&osdUnits);
