@@ -128,8 +128,10 @@ static void vtolPathFollowerTask(void *parameters)
 	uint32_t lastUpdateTime;
 	
 	VtolPathFollowerSettingsConnectCallback(vtol_follower_control_settings_updated);
+	VtolPathFollowerSettingsConnectCallback(vtol_follower_fsm_settings_updated);
 	AltitudeHoldSettingsConnectCallback(vtol_follower_control_settings_updated);
 	vtol_follower_control_settings_updated(NULL);
+	vtol_follower_fsm_settings_updated(NULL);
 	
 	VtolPathFollowerSettingsGet(&guidanceSettings);
 	

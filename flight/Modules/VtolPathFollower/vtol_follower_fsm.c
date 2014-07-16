@@ -57,10 +57,11 @@
 #include "positionactual.h"
 #include "stabilizationdesired.h"
 #include "vtolpathfollowerstatus.h"
+#include "vtolpathfollowersettings.h"
 
 // Various navigation constants
-const static float RTH_MIN_ALTITUDE = 15.f;  //!< Hover at least 15 m above home */
-const static float RTH_VELOCITY     = 2.5f;  //!< Return home at 2.5 m/s */
+static float rth_min_altitude;               //!< Hover at least in specified altitude above home */
+static float rth_velocity;                   //!< Return home at specified velocity */
 const static float RTH_ALT_ERROR    = 1.0f;  //!< The altitude to come within for RTH */
 const static float DT               = 0.05f; // TODO: make the self monitored
 
@@ -610,8 +611,8 @@ static void go_enable_pause_10s_here()
 	PositionActualGet(&positionActual);
 
 	// Make sure we return at a minimum of 15 m above home
-	if (positionActual.Down > -RTH_MIN_ALTITUDE)
-		positionActual.Down = -RTH_MIN_ALTITUDE;
+	if (positionActual.Down > -rth_min_altitude)
+		positionActual.Down = -rth_min_altitude;
 
 	hold_position(positionActual.North, positionActual.East, positionActual.Down);
 
@@ -627,8 +628,8 @@ static void go_enable_rise_here()
 	float down = vtol_hold_position_ned[2];
 
 	// Make sure we return at a minimum of 15 m above home
-	if (down > -RTH_MIN_ALTITUDE)
-		down = -RTH_MIN_ALTITUDE;
+	if (down > -rth_min_altitude)
+		down = -rth_min_altitude;
 
 	// If the new altitude is more than a meter away, activate it. Otherwise
 	// go straight to the next state
@@ -646,8 +647,8 @@ static void go_enable_rise_here()
 static void go_enable_pause_home_10s()
 {
 	float down = vtol_hold_position_ned[2];
-	if (down > - RTH_MIN_ALTITUDE)
-		down = -RTH_MIN_ALTITUDE;
+	if (down > - rth_min_altitude)
+		down = -rth_min_altitude;
 
 	hold_position(0, 0, down);
 
@@ -673,11 +674,11 @@ static void go_enable_fly_home()
 	vtol_fsm_path_desired.End[0] = 0;
 	vtol_fsm_path_desired.End[1] = 0;
 	vtol_fsm_path_desired.End[2] = positionActual.Down;
-	if (vtol_fsm_path_desired.End[2] > -RTH_MIN_ALTITUDE)
-		vtol_fsm_path_desired.End[2] = -RTH_MIN_ALTITUDE;
+	if (vtol_fsm_path_desired.End[2] > -rth_min_altitude)
+		vtol_fsm_path_desired.End[2] = -rth_min_altitude;
 
-	vtol_fsm_path_desired.StartingVelocity = RTH_VELOCITY;
-	vtol_fsm_path_desired.EndingVelocity = RTH_VELOCITY;
+	vtol_fsm_path_desired.StartingVelocity = rth_velocity;
+	vtol_fsm_path_desired.EndingVelocity = rth_velocity;
 
 	vtol_fsm_path_desired.Mode = PATHDESIRED_MODE_FLYVECTOR;
 	vtol_fsm_path_desired.ModeParameters = 0;
@@ -727,4 +728,14 @@ int32_t vtol_follower_fsm_update()
 	return 0;
 }
 
+void vtol_follower_fsm_settings_updated(UAVObjEvent * ev)
+{
+	VtolPathFollowerSettingsData settings;
+	VtolPathFollowerSettingsGet(&settings);
+
+	rth_min_altitude = settings.RTHAltitudeMin;
+	rth_velocity = settings.RTHHorizontalVelMax;
+}
+
 //! @}
+
