@@ -60,10 +60,12 @@
 #include "vtolpathfollowersettings.h"
 
 // Various navigation constants
-static float rth_min_altitude;               //!< Hover at least in specified altitude above home */
-static float rth_velocity;                   //!< Return home at specified velocity */
-const static float RTH_ALT_ERROR    = 1.0f;  //!< The altitude to come within for RTH */
-const static float DT               = 0.05f; // TODO: make the self monitored
+static float rth_min_altitude;                   //!< Hover at least in configured altitude above home */
+static float rth_velocity;                       //!< Return home at configured velocity */
+static float gps_invalid_time;                   //!< GPS invalid time counter
+const static float RTH_ALT_ERROR        = 1.0f;  //!< The altitude to come within for RTH */
+const static float MAX_GPS_INVALID_TIME = 2.0f;  //!< 2 seconds of invalid GPS before emergency landing is executed
+const static float DT                   = 0.05f; // TODO: make the self monitored
 
 //! Events that can be be injected into the FSM and trigger state changes
 enum vtol_fsm_event {
@@ -71,6 +73,7 @@ enum vtol_fsm_event {
 	FSM_EVENT_TIMEOUT,        /*!< The timeout configured expired */
 	FSM_EVENT_HIT_TARGET,     /*!< The UAV hit the current target */
 	FSM_EVENT_LEFT_TARGET,    /*!< The UAV left the target */
+	FSM_EVENT_GPS_ERROR,      /*!< GPS reception failed*/
 	FSM_EVENT_NUM_EVENTS
 };
 
@@ -82,16 +85,17 @@ enum vtol_fsm_event {
  * algorithm.
  */
 enum vtol_fsm_state {
-	FSM_STATE_FAULT,           /*!< Invalid state transition occurred */
-	FSM_STATE_INIT,            /*!< Starting state, normally auto transitions */
-	FSM_STATE_HOLDING,         /*!< Holding at current location */
-	FSM_STATE_FLYING_PATH,     /*!< Flying a path to a destination */
-	FSM_STATE_LANDING,         /*!< Landing at a destination */
-	FSM_STATE_PRE_RTH_HOLD,    /*!< Short hold before returning to home */
-	FSM_STATE_PRE_RTH_RISE,    /*!< Rise to 15 m before flying home */
-	FSM_STATE_POST_RTH_HOLD,   /*!< Hold at home before initiating landing */
-	FSM_STATE_DISARM,          /*!< Disarm the system after landing */
-	FSM_STATE_UNCHANGED,       /*!< Fake state to indicate do nothing */
+	FSM_STATE_FAULT,                   /*!< Invalid state transition occurred */
+	FSM_STATE_INIT,                    /*!< Starting state, normally auto transitions */
+	FSM_STATE_HOLDING,                 /*!< Holding at current location */
+	FSM_STATE_FLYING_PATH,             /*!< Flying a path to a destination */
+	FSM_STATE_LANDING,                 /*!< Landing at a destination */
+	FSM_STATE_LANDING_EMERGENCY_NOGPS, /*!< Landing with level attitude when GPS lost */
+	FSM_STATE_PRE_RTH_HOLD,            /*!< Short hold before returning to home */
+	FSM_STATE_PRE_RTH_RISE,            /*!< Rise to 15 m before flying home */
+	FSM_STATE_POST_RTH_HOLD,           /*!< Hold at home before initiating landing */
+	FSM_STATE_DISARM,                  /*!< Disarm the system after landing */
+	FSM_STATE_UNCHANGED,               /*!< Fake state to indicate do nothing */
 	FSM_STATE_NUM_STATES
 };
 
@@ -109,10 +113,10 @@ struct vtol_fsm_transition {
  * then set the navgiation mode
  */
 enum vtol_nav_mode {
-	VTOL_NAV_HOLD,   /*!< Hold at the configured location @ref do_land*/
-	VTOL_NAV_PATH,   /*!< Fly the configured path @ref do_path*/
-	VTOL_NAV_LAND,   /*!< Land at the desired location @ref do_land */
-	VTOL_NAV_IDLE    /*!< Nothing, no mode configured */
+	VTOL_NAV_HOLD,                  /*!< Hold at the configured location @ref do_land*/
+	VTOL_NAV_PATH,                  /*!< Fly the configured path @ref do_path*/
+	VTOL_NAV_LAND,                  /*!< Land at the desired location @ref do_land */
+	VTOL_NAV_IDLE                   /*!< Nothing, no mode configured */
 };
 
 // State transition methods, typically enabling for certain actions
@@ -123,6 +127,7 @@ static void go_enable_rise_here(void);
 static void go_enable_pause_home_10s(void);
 static void go_enable_fly_home(void);
 static void go_enable_land_home(void);
+static void go_enable_land_emergency_nogps(void);
 
 // Methods that actually achieve the desired nav mode
 static int32_t do_default(void);
@@ -130,12 +135,14 @@ static int32_t do_hold(void);
 static int32_t do_path(void);
 static int32_t do_requested_path(void);
 static int32_t do_land(void);
+static int32_t do_land_emergency_nogps(void);
 static int32_t do_loiter(void);
 static int32_t do_ph_climb(void);
 
 // Utility functions
 static void configure_timeout(int32_t s);
 static void hold_position(float north, float east, float down);
+static bool gps_valid();
 
 /**
  * The state machine for landing at home does the following:
@@ -154,6 +161,7 @@ const static struct vtol_fsm_transition fsm_hold_position[FSM_STATE_NUM_STATES] 
 		.next_state = {
 			[FSM_EVENT_HIT_TARGET] = FSM_STATE_UNCHANGED,
 			[FSM_EVENT_LEFT_TARGET] = FSM_STATE_UNCHANGED,
+			[FSM_EVENT_GPS_ERROR] = FSM_STATE_LANDING_EMERGENCY_NOGPS,
 		},
 	},
 };
@@ -176,6 +184,7 @@ const static struct vtol_fsm_transition fsm_follow_path[FSM_STATE_NUM_STATES] = 
 		.next_state = {
 			[FSM_EVENT_HIT_TARGET] = FSM_STATE_UNCHANGED,
 			[FSM_EVENT_LEFT_TARGET] = FSM_STATE_UNCHANGED,
+			[FSM_EVENT_GPS_ERROR] = FSM_STATE_LANDING_EMERGENCY_NOGPS,
 		},
 	},
 };
@@ -200,6 +209,7 @@ const static struct vtol_fsm_transition fsm_land_home[FSM_STATE_NUM_STATES] = {
 			[FSM_EVENT_TIMEOUT] = FSM_STATE_PRE_RTH_RISE,
 			[FSM_EVENT_HIT_TARGET] = FSM_STATE_UNCHANGED,
 			[FSM_EVENT_LEFT_TARGET] = FSM_STATE_UNCHANGED,
+			[FSM_EVENT_GPS_ERROR] = FSM_STATE_LANDING_EMERGENCY_NOGPS,
 		},
 	},
 	[FSM_STATE_PRE_RTH_RISE] = {
@@ -209,12 +219,14 @@ const static struct vtol_fsm_transition fsm_land_home[FSM_STATE_NUM_STATES] = {
 			[FSM_EVENT_TIMEOUT] = FSM_STATE_FLYING_PATH,
 			[FSM_EVENT_HIT_TARGET] = FSM_STATE_FLYING_PATH,
 			[FSM_EVENT_LEFT_TARGET] = FSM_STATE_UNCHANGED,
+			[FSM_EVENT_GPS_ERROR] = FSM_STATE_LANDING_EMERGENCY_NOGPS,
 		},
 	},
 	[FSM_STATE_FLYING_PATH] = {
 		.entry_fn = go_enable_fly_home,
 		.next_state = {
 			[FSM_EVENT_HIT_TARGET] = FSM_STATE_POST_RTH_HOLD,
+			[FSM_EVENT_GPS_ERROR] = FSM_STATE_LANDING_EMERGENCY_NOGPS,
 		},
 	},
 	[FSM_STATE_POST_RTH_HOLD] = {
@@ -223,15 +235,23 @@ const static struct vtol_fsm_transition fsm_land_home[FSM_STATE_NUM_STATES] = {
 			[FSM_EVENT_TIMEOUT] = FSM_STATE_LANDING,
 			[FSM_EVENT_HIT_TARGET] = FSM_STATE_UNCHANGED,
 			[FSM_EVENT_LEFT_TARGET] = FSM_STATE_UNCHANGED,
+			[FSM_EVENT_GPS_ERROR] = FSM_STATE_LANDING_EMERGENCY_NOGPS,
 		},
 	},
 	[FSM_STATE_LANDING] = {
 		.entry_fn = go_enable_land_home,
 		.next_state = {
 			[FSM_EVENT_HIT_TARGET] = FSM_STATE_DISARM,
+			[FSM_EVENT_GPS_ERROR] = FSM_STATE_LANDING_EMERGENCY_NOGPS,
 		},
 	},
-
+	[FSM_STATE_LANDING_EMERGENCY_NOGPS] = {
+		.entry_fn = go_enable_land_emergency_nogps,
+		.static_fn = do_land_emergency_nogps,
+		.next_state = {
+				[FSM_EVENT_HIT_TARGET] = FSM_STATE_DISARM,
+		}
+	},
 };
 
 //! Tracks how many times the fsm_static has been called
@@ -349,6 +369,9 @@ static int32_t vtol_fsm_static()
 		vtol_fsm_inject_event(FSM_EVENT_TIMEOUT);
 	}
 
+	if (!gps_valid())
+		vtol_fsm_inject_event(FSM_EVENT_GPS_ERROR);
+
 	return 0;
 }
 
@@ -400,7 +423,7 @@ static float vtol_hold_position_ned[3];
 static int32_t do_hold()
 {
 	if (vtol_follower_control_endpoint(DT, vtol_hold_position_ned) == 0) {
-		if (vtol_follower_control_attitude(DT) == 0) {
+		if (vtol_follower_control_attitude(DT, false) == 0) {
 			return 0;
 		}
 	}
@@ -423,7 +446,7 @@ static int32_t do_path()
 {
 	struct path_status progress;
 	if (vtol_follower_control_path(DT, &vtol_fsm_path_desired, &progress) == 0) {
-		if (vtol_follower_control_attitude(DT) == 0) {
+		if (vtol_follower_control_attitude(DT, false) == 0) {
 
 			if (progress.fractional_progress >= 1.0f) {
 				vtol_fsm_inject_event(FSM_EVENT_HIT_TARGET);
@@ -468,14 +491,31 @@ static int32_t do_requested_path()
  *
  * This method uses the vtol follower library to calculate the control values. The 
  * desired landing location is stored in @ref vtol_hold_position_ned.
- *
  * @return 0 if successful, <0 if failure
  */
 static int32_t do_land()
 {
 	bool landed;
 	if (vtol_follower_control_land(DT, vtol_hold_position_ned, &landed) == 0) {
-		if (vtol_follower_control_attitude(DT) == 0) {
+		if (vtol_follower_control_attitude(DT, false) == 0) {
+			return 0;
+		}
+	}
+
+	return 0;
+}
+
+/**
+ * Update control values to land at level attitude somewhere
+ *
+ * This method uses the vtol follower library to calculate the control values.
+ * @return 0 if successful, <0 if failure
+ */
+static int32_t do_land_emergency_nogps()
+{
+	bool landed;
+	if (vtol_follower_control_land(DT, vtol_hold_position_ned, &landed) == 0) {
+		if (vtol_follower_control_attitude(DT, true) == 0) {
 			return 0;
 		}
 	}
@@ -589,6 +629,37 @@ static void hold_position(float north, float east, float down)
 }
 
 /**
+ * Test for GPS data validity
+ * It will provide GPS some time to recover from short glitch
+ * @return true when valid
+ */
+static bool gps_valid()
+{
+	if (AlarmsGet(SYSTEMALARMS_ALARM_ATTITUDE) >= SYSTEMALARMS_ALARM_WARNING) {
+		uint8_t estimation_error;
+		SystemAlarmsStateEstimationGet(&estimation_error);
+		switch (estimation_error) {
+		case SYSTEMALARMS_STATEESTIMATION_NOGPS:
+		case SYSTEMALARMS_STATEESTIMATION_NOHOME:
+		case SYSTEMALARMS_STATEESTIMATION_PDOPTOOHIGH:
+		case SYSTEMALARMS_STATEESTIMATION_TOOFEWSATELLITES:
+			gps_invalid_time += DT;
+			break;
+		default:
+			gps_invalid_time = 0;
+			break;
+		}
+	} else {
+		gps_invalid_time = 0;
+	}
+
+	if (gps_invalid_time >= MAX_GPS_INVALID_TIME)
+		return false;
+
+	return true;
+}
+
+/**
  * Enable holding position at current location. Configures for hold.
  */
 static void go_enable_hold_here()
@@ -694,7 +765,19 @@ static void go_enable_fly_home()
 }
 
 /**
- * Descends to land.
+ * Enable landing without horizontal control (because no gps) with level attitude
+ */
+static void go_enable_land_emergency_nogps(void)
+{
+	vtol_hold_position_ned[0] = 0; // Has no effect
+	vtol_hold_position_ned[1] = 0; // Has no effect
+	vtol_hold_position_ned[2] = 0; // Has no affect
+
+	configure_timeout(0);
+}
+
+/**
+ * Enable holding at home location for 10 s at current altitude. Configures for hold.
  */
 static void go_enable_land_home()
 {
@@ -712,6 +795,11 @@ static void go_enable_land_home()
 // Public API methods
 int32_t vtol_follower_fsm_activate_goal(enum vtol_goals new_goal)
 {
+	// re-initialize counter to ensure emergency landing
+	// will kick-in immediately after VTOL FSM activation
+	// in case GPS has no usable data for navigation
+	gps_invalid_time = MAX_GPS_INVALID_TIME;
+
 	switch(new_goal) {
 	case GOAL_LAND_HOME:
 		vtol_fsm_fsm_init(fsm_land_home);
