@@ -501,12 +501,13 @@ static int32_t vtol_follower_control_accel(float dT)
 /**
  * Compute desired attitude from the desired velocity
  * @param[in] dT the time since last evaluation
+ * @param[in] throttle_control_only used for emergency landing when GPS is lost
  *
  * Takes in @ref NedActual which has the acceleration in the
  * NED frame as the feedback term and then compares the
  * @ref VelocityActual against the @ref VelocityDesired
  */
-int32_t vtol_follower_control_attitude(float dT)
+int32_t vtol_follower_control_attitude(float dT, bool throttle_control_only)
 {
 	vtol_follower_control_accel(dT);
 
@@ -525,10 +526,16 @@ int32_t vtol_follower_control_attitude(float dT)
 	float right_accel_desired = -northCommand * sinf(yaw * DEG2RAD) + eastCommand * cosf(yaw * DEG2RAD);
 
 	// Set the angle that would achieve the desired acceleration given the thrust is enough for a hover
-	stabDesired.Pitch = bound_min_max(RAD2DEG * atanf(forward_accel_desired / GRAVITY),
-	                   -guidanceSettings.MaxRollPitch, guidanceSettings.MaxRollPitch);
-	stabDesired.Roll = bound_min_max(RAD2DEG * atanf(right_accel_desired / GRAVITY),
-	                   -guidanceSettings.MaxRollPitch, guidanceSettings.MaxRollPitch);
+	if (!throttle_control_only) {
+		stabDesired.Pitch = bound_min_max(RAD2DEG * atanf(forward_accel_desired / GRAVITY),
+						   -guidanceSettings.MaxRollPitch, guidanceSettings.MaxRollPitch);
+		stabDesired.Roll = bound_min_max(RAD2DEG * atanf(right_accel_desired / GRAVITY),
+						   -guidanceSettings.MaxRollPitch, guidanceSettings.MaxRollPitch);
+	} else {
+		// We want to just land level
+		stabDesired.Pitch = 0;
+		stabDesired.Roll = 0;
+	}
 	
 	stabDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_ROLL] = STABILIZATIONDESIRED_STABILIZATIONMODE_ATTITUDE;
 	stabDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_PITCH] = STABILIZATIONDESIRED_STABILIZATIONMODE_ATTITUDE;
