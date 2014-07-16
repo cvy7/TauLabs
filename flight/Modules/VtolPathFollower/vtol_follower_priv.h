@@ -78,4 +78,10 @@ int32_t vtol_follower_fsm_activate_goal(enum vtol_goals new_goal);
  */
 int32_t vtol_follower_fsm_update();
 
+/**
+ * Called when VtolPathFollowerSettings UAVO is updated
+ */
+void vtol_follower_fsm_settings_updated(UAVObjEvent * ev);
+
 #endif
+
