@@ -120,6 +120,7 @@ ConfigInputWidget::ConfigInputWidget(QWidget *parent) : ConfigTaskWidget(parent)
 
     addUAVObjectToWidgetRelation("ManualControlSettings","Arming",m_config->armControl);
     addUAVObjectToWidgetRelation("ManualControlSettings","ArmedTimeout",m_config->armTimeout,0,1000);
+    addUAVObjectToWidgetRelation("ManualControlSettings","FailsafeBehavior",m_config->failsafeBehavior);
     connect( ManualControlCommand::GetInstance(getObjectManager()),SIGNAL(objectUpdated(UAVObject*)),this,SLOT(moveFMSlider()));
     connect( ManualControlSettings::GetInstance(getObjectManager()),SIGNAL(objectUpdated(UAVObject*)),this,SLOT(updatePositionSlider()));
     enableControls(false);
@@ -129,6 +130,8 @@ ConfigInputWidget::ConfigInputWidget(QWidget *parent) : ConfigTaskWidget(parent)
     // Connect the help button
     connect(m_config->inputHelp, SIGNAL(clicked()), this, SLOT(openHelp()));
 
+    // Connect failsafe behavior combo
+    connect(m_config->failsafeBehavior, SIGNAL(activated(QString)), this, SLOT(failsafeBehaviorActivated(QString)));
     m_config->graphicsView->setScene(new QGraphicsScene(this));
     m_config->graphicsView->setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
     m_renderer = new QSvgRenderer();
@@ -1534,5 +1537,30 @@ void ConfigInputWidget::simpleCalibration(bool enable)
         manualSettingsObj->setData(manualSettingsData);
 
         disconnect(manualCommandObj, SIGNAL(objectUnpacked(UAVObject*)), this, SLOT(updateCalibration()));
+    }
+}
+
+void ConfigInputWidget::failsafeBehaviorActivated(QString text)
+{
+    if (text != "Throttle Cut") {
+        QMessageBox msgBox;
+        msgBox.setWindowTitle(tr("Failsafe behavior changed"));
+        msgBox.setText(tr("<b>This is highly experimental feature!</b><p> \
+                          The only safe option here is Throttle Cut and never flying over people or property. RTH is not tested enough and may result in \
+                          flyaway and <b>cause health detriment and property damage</b>. Using this mode you, and only you are taking full responsibility \
+                          for this. It can be danger even when your copter is on the ground and lost of RC input cause activation of RTH. <p> Make sure \
+                          you have your copter DISARMED when approaching it. There is a protection when throttle is down before RC lost, RTH will not be activated, \
+                          but there is no guarantee it will work propperly. <p> When GPS signal is lost during RTH, copter will just descent at level \
+                          attitude and eventually land somewhere.<p> \
+                          You have to met these conditions (otherwise throttle cut failsafe will be used): <br>\
+                          1. Multirotor airframe <br> \
+                          2. GPS module enabled <br>\
+                          3. VTOLPathFollower module enabled <br> \
+                          4. Attitude filter set to Complementary or INSOutdoor <br> \
+                          5. Navigation filter set to INS "));
+        msgBox.setStandardButtons(QMessageBox::Ok);
+        msgBox.setDefaultButton(QMessageBox::Ok);
+        msgBox.setIcon(QMessageBox::Warning);
+        msgBox.exec();
     }
 }
