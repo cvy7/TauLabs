@@ -186,6 +186,7 @@ private slots:
         void invertControls();
         void simpleCalibration(bool state);
         void updateCalibration();
+        void failsafeBehaviorActivated(QString text);
 
 protected:
         void resizeEvent(QResizeEvent *event);
