@@ -59,7 +59,7 @@ enum vtol_pid {
 // Control code public API methods
 int32_t vtol_follower_control_path(const float dT, const PathDesiredData *pathDesired, struct path_status *progress);
 int32_t vtol_follower_control_endpoint(const float dT, const float *hold_pos_ned);
-int32_t vtol_follower_control_attitude(const float dT);
+int32_t vtol_follower_control_attitude(const float dT, bool throttle_control_only);
 int32_t vtol_follower_control_land(const float dT, const float *hold_pos_ned, bool *landed);
 void vtol_follower_control_settings_updated(UAVObjEvent * ev);
 
@@ -78,4 +78,10 @@ int32_t vtol_follower_fsm_activate_goal(enum vtol_goals new_goal);
  */
 int32_t vtol_follower_fsm_update();
 
+/**
+ * Called when VtolPathFollowerSettings UAVO is updated
+ */
+void vtol_follower_fsm_settings_updated(UAVObjEvent * ev);
+
 #endif
+
