@@ -70,7 +70,7 @@
 			</options>
 		</field>
 
-		<field name="UartOnewire" units="function" type="enum" elements="1"  defaultvalue="FrSkySPort">
+		<field name="UartOnewire" units="function" type="enum" elements="1"  defaultvalue="Disabled">
 			<options>
 				<option>Disabled</option>
 				<option>FrSKY SPort Telemetry</option>
