@@ -61,6 +61,7 @@
 #define REQ_ID_POWER_LIMITS         10
 #define REQ_ID_FLIGHT_MODE          11
 #define REQ_ID_SET_UNITS            12
+#define REQ_ID_FORCE_TV_SYSTEM      20
 
 #define DATA_ID_LED_CONTROL         0
 #define DATA_ID_PFD                 1
@@ -84,6 +85,9 @@
 #define HUD_LED_GPS                 HUD_LED_BLUE
 #define HUD_LED_TELEMETRY           HUD_LED_ORANGE
 #define HUD_LED_ALARM               HUD_LED_RED
+
+#define HUD_TVSYSTEM_PAL            0
+#define HUD_TVSYSTEM_NTSC           1
 
 enum HudWaypointType {
 	HUD_WAYPOINT_HOME,
@@ -252,6 +256,18 @@ static int32_t hudSetUnits(uint8_t units)
 	return draco_osd_comm_send_request(txPayload, 2, 0, 0);
 }
 
+/**
+ * Force using of PAL or NTSC TV system
+ * @param[in] PAL or NTSC
+ * @return 0 when successful
+ */
+static int32_t hudForceTvSystem(uint8_t tvsys)
+{
+	txPayload[0] = REQ_ID_FORCE_TV_SYSTEM;
+	txPayload[1] = tvsys;
+
+	return draco_osd_comm_send_request(txPayload, 2, 0, 0);
+}
 
 /**
  * Set HUD battery limits where warning should indicated
@@ -514,6 +530,19 @@ static void dracoOsdTask(void *parameters)
 		hudSetUnits(HUD_UNITS_IMPERIAL);
 	else
 		hudSetUnits(HUD_UNITS_METRIC);
+
+	uint8_t tvSys;
+	HwDracoOSDTvSystemGet(&tvSys);
+	switch (tvSys) {
+		case HWDRACO_OSDTVSYSTEM_PAL:
+			hudForceTvSystem(HUD_TVSYSTEM_PAL);
+			break;
+		case HWDRACO_OSDTVSYSTEM_NTSC:
+			hudForceTvSystem(HUD_TVSYSTEM_NTSC);
+			break;
+		default:
+			break;
+	}
 
 	bool useBattery = false;
 	if (FlightBatterySettingsHandle() != 0) {
