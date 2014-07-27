@@ -46,6 +46,7 @@
 #include "homelocation.h"
 #include "airspeedactual.h"
 #include "flighttelemetrystats.h"
+#include "actuatordesired.h"
 #include "hwdraco.h"
 
 #if defined(PIOS_DRACO_OSD_STACK_SIZE)
@@ -149,6 +150,7 @@ static VelocityActualData velocityActual;
 static FlightStatusData flightStatus;
 static WaypointData waypointActual;
 static FlightTelemetryStatsData telemetryStats;
+static ActuatorDesiredData actuatorDesired;
 
 static void dracoOsdTask(void *parameters);
 
@@ -416,7 +418,7 @@ static int32_t hudSendMode(void)
 static void hudSetupStopwatch(void)
 {
 	struct DataStopwatch stopwatch;
-	if (flightStatus.Armed == FLIGHTSTATUS_ARMED_DISARMED)
+	if ((flightStatus.Armed == FLIGHTSTATUS_ARMED_DISARMED) || (actuatorDesired.Throttle <= 0))
 		stopwatch.running = 0;
 	else
 		stopwatch.running = 1;
@@ -456,6 +458,7 @@ static void hudSendWaypoint(enum HudWaypointType type, bool show, float distance
 	struct DataWp wp;
 	wp.distance = (uint32_t)(distance * 100.0f);
 	wp.heading = (int16_t)(heading * 10.0f);
+	wp.show = show;
 
 	txPayload[0] = (type == HUD_WAYPOINT_HOME) ? DATA_ID_WAYPOINT_HOME : DATA_ID_WAYPOINT_NAVI;
 
@@ -556,6 +559,8 @@ static void dracoOsdTask(void *parameters)
 
 	bool firstPass = true;
 	uint8_t gpsStatusLast = 0;
+	float throttleLast = 0;
+	bool throttleActiveChange = false;
 	uint8_t alarmStatusLast = getAlarmStatus();
 	uint8_t telemetryStatusLast = FLIGHTTELEMETRYSTATS_STATUS_DISCONNECTED;
 	while (1) {
@@ -589,19 +594,31 @@ static void dracoOsdTask(void *parameters)
 			hudSendGnss();
 		}
 
+		if (ActuatorDesiredHandle() != 0) {
+			// check whether throttle command has changed from stopped
+			// to running and vice versa
+			ActuatorDesiredGet(&actuatorDesired);
+			if (((actuatorDesired.Throttle > 0) && (throttleLast <= 0)) ||
+					((throttleLast > 0) && (actuatorDesired.Throttle <= 0)))
+				throttleActiveChange = true;
+			else
+				throttleActiveChange = false;
+
+			throttleLast = actuatorDesired.Throttle;
+		}
+
 		if (FlightStatusHandle() != 0) {
 			FlightStatusData flightStatusNew;
 			FlightStatusGet(&flightStatusNew);
 
+			bool armStatusChanged = false;
 			if ((flightStatus.Armed != flightStatusNew.Armed) ||
 					(flightStatus.FlightMode != flightStatusNew.FlightMode) || (firstPass)) {
-				bool armStatusChanged = flightStatus.Armed != flightStatusNew.Armed;
+				armStatusChanged = flightStatus.Armed != flightStatusNew.Armed;
 
 				memcpy(&flightStatus, &flightStatusNew, sizeof(FlightStatusData));
 				hudSendMode();
 				if ((armStatusChanged) || (firstPass)) {
-					hudSetupStopwatch();
-
 					// handle ARMED LED
 					switch (flightStatus.Armed) {
 					case FLIGHTSTATUS_ARMED_ARMED:
@@ -615,6 +632,10 @@ static void dracoOsdTask(void *parameters)
 						break;
 					}
 				}
+			}
+
+			if ((armStatusChanged) || (firstPass) || (throttleActiveChange)) {
+				hudSetupStopwatch();
 			}
 		}
 		bool showNaviWp = false;
