@@ -458,6 +458,7 @@ static void hudSendWaypoint(enum HudWaypointType type, bool show, float distance
 	struct DataWp wp;
 	wp.distance = (uint32_t)(distance * 100.0f);
 	wp.heading = (int16_t)(heading * 10.0f);
+	wp.show = show;
 
 	txPayload[0] = (type == HUD_WAYPOINT_HOME) ? DATA_ID_WAYPOINT_HOME : DATA_ID_WAYPOINT_NAVI;
 
