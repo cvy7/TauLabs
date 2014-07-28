@@ -1618,7 +1618,8 @@ void ConfigInputWidget::failsafeBehaviorActivated(QString text)
                           2. GPS module enabled <br>\
                           3. VTOLPathFollower module enabled <br> \
                           4. Attitude filter set to Complementary or INSOutdoor <br> \
-                          5. Navigation filter set to INS "));
+                          5. Navigation filter set to INS  <br> \
+                          6. ThrottleControl ENABLED in VTOLPathFollowerSettings"));
         msgBox.setStandardButtons(QMessageBox::Ok);
         msgBox.setDefaultButton(QMessageBox::Ok);
         msgBox.setIcon(QMessageBox::Warning);
