@@ -102,6 +102,7 @@ static bool check_rth_preconditions_met()
 //! Initialize the failsafe controller
 int32_t failsafe_control_initialize()
 {
+	throttle_low_before_engage = true;
 	return 0;
 }
 
