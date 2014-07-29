@@ -484,7 +484,7 @@ static void hudSendWaypoints(bool showNaviWp)
 		float eastDiff = waypointActual.Position[WAYPOINT_POSITION_EAST] - positionActual.East;
 		distance = sqrtf(powf(eastDiff, 2) + powf(northDiff, 2));
 		heading = atan2f(eastDiff, northDiff) * RAD2DEG;
-		heading -= attitudeActual.Yaw - 180.0f;
+		heading -= attitudeActual.Yaw;
 		heading = circular_modulus_deg(heading);
 		hudSendWaypoint(HUD_WAYPOINT_NAVI, true, distance, heading);
 	} else if (lastShowNaviWp) {
