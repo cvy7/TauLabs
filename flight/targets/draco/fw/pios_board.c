@@ -391,9 +391,15 @@ void PIOS_Board_Init(void) {
 		panic(1);
 #endif	/* PIOS_INCLUDE_FLASH */
 
+	/* Initialize the alarms library */
+	AlarmsInitialize();
+
 	/* Initialize UAVObject libraries */
 	EventDispatcherInitialize();
 	UAVObjInitialize();
+
+	/* Initialize the task monitor library */
+	TaskMonitorInitialize();
 
 	HwDracoInitialize();
 	ModuleSettingsInitialize();
@@ -411,12 +417,6 @@ void PIOS_Board_Init(void) {
 		PIOS_WDG_Init();
 	}
 #endif
-
-	/* Initialize the alarms library */
-	AlarmsInitialize();
-
-	/* Initialize the task monitor library */
-	TaskMonitorInitialize();
 
 	/* Set up pulse timers */
 
