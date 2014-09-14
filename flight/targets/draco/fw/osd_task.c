@@ -48,13 +48,14 @@
 #include "flighttelemetrystats.h"
 #include "actuatordesired.h"
 #include "hwdraco.h"
+#include "pios_thread.h"
 
 #if defined(PIOS_DRACO_OSD_STACK_SIZE)
 #define STACK_SIZE_BYTES PIOS_DRACO_OSD_STACK_SIZE
 #else
 #define STACK_SIZE_BYTES 1024
 #endif
-#define TASK_PRIORITY               (tskIDLE_PRIORITY + 1)
+#define TASK_PRIORITY               PIOS_THREAD_PRIO_LOW
 #define TASK_RATE_HZ 25
 
 #define REQ_ID_VERSION              0
@@ -135,7 +136,7 @@ struct DataStopwatch {
 	uint16_t maxSeconds;
 } __attribute__((packed));
 
-static xTaskHandle dracoOsdTaskHandle;
+static struct pios_thread *dracoOsdTaskHandle;
 
 static uint8_t *txPayload;
 static uint8_t *answerPayload;
@@ -508,9 +509,8 @@ void draco_osd_task_start(void)
 		return;
 	}
 
-	xTaskCreate(dracoOsdTask, (signed char*)"dracoOsdTask",
-			STACK_SIZE_BYTES / 4, NULL, TASK_PRIORITY,
-			&dracoOsdTaskHandle);
+	dracoOsdTaskHandle = PIOS_Thread_Create(dracoOsdTask, "dracoOsdTask",
+			STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
 }
 
 /**
@@ -518,9 +518,9 @@ void draco_osd_task_start(void)
  */
 static void dracoOsdTask(void *parameters)
 {
-	portTickType lastTime = xTaskGetTickCount();
+	uint32_t lastTime = PIOS_Thread_Systime();
 
-	vTaskDelay(MS2TICKS(100));
+	PIOS_Thread_Sleep(100);
 	getVersion();
 	uint8_t osdEnabled = 0;
 	HwDracoOSDEnableGet(&osdEnabled);
@@ -565,8 +565,8 @@ static void dracoOsdTask(void *parameters)
 	uint8_t telemetryStatusLast = FLIGHTTELEMETRYSTATS_STATUS_DISCONNECTED;
 	while (1) {
 		draco_osd_comm_wait(1000 / TASK_RATE_HZ);
-		portTickType currentTime = xTaskGetTickCount();
-		if ((currentTime > lastTime) && (TICKS2MS(currentTime - lastTime) < (1000 / TASK_RATE_HZ)))
+		uint32_t currentTime = PIOS_Thread_Systime();
+		if ((currentTime > lastTime) && ((currentTime - lastTime) < (1000 / TASK_RATE_HZ)))
 			continue;
 		lastTime = currentTime;
 
