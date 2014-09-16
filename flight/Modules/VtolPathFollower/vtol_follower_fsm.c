@@ -64,7 +64,7 @@ static float rth_min_altitude;                   //!< Hover at least in configur
 static float rth_velocity;                       //!< Return home at configured velocity */
 static float gps_invalid_time;                   //!< GPS invalid time counter
 const static float RTH_ALT_ERROR        = 1.0f;  //!< The altitude to come within for RTH */
-const static float MAX_GPS_INVALID_TIME = 2.0f;  //!< 2 seconds of invalid GPS before emergency landing is executed
+const static float MAX_GPS_INVALID_TIME = 5.0f;  //!< 5 seconds of invalid GPS before emergency landing is executed
 const static float DT                   = 0.05f; // TODO: make the self monitored
 
 //! Events that can be be injected into the FSM and trigger state changes
