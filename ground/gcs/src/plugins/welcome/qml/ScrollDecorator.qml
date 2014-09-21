@@ -1,4 +1,4 @@
-import QtQuick 1.1
+import QtQuick 2.0
 
 Rectangle {
     id: scrollDecorator
@@ -9,8 +9,6 @@ Rectangle {
         id: scrollLoader
         sourceComponent: scrollDecorator.flickableItem ? scrollBar : undefined
     }
-
-    Component.onDestruction: scrollLoader.sourceComponent = undefined
 
     Component {
         id: scrollBar

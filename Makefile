@@ -1,6 +1,9 @@
 # Makefile for Taulabs project
 .DEFAULT_GOAL := help
 
+WHEREAMI := $(dir $(lastword $(MAKEFILE_LIST)))
+ROOT_DIR := $(realpath $(WHEREAMI)/ )
+
 # import macros common to all supported build systems
 include $(CURDIR)/make/system-id.mk
 
@@ -396,7 +399,7 @@ androidgcs_clean:
 #
 # Find the git hashes of each commit that changes uavobjects with:
 #   git log --format=%h -- shared/uavobjectdefinition/ | head -n 6 | tr '\n' ' '
-UAVO_GIT_VERSIONS := next 
+UAVO_GIT_VERSIONS := HEAD 
 
 # All versions includes a pseudo collection called "working" which represents
 # the UAVOs in the source tree
@@ -991,6 +994,9 @@ endif
 .PHONY: package
 package:
 	$(V1) cd $@ && $(MAKE) --no-print-directory $@
+	
+linux_standalone:
+	$(V1) cd package && $(MAKE) --no-print-directory $@ QT_PLUGINS_DIR="$(QT_PLUGINS_DIR)"
 
 .PHONY: package_resources
 package_resources:
