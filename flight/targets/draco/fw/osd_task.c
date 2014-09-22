@@ -505,7 +505,7 @@ void draco_osd_task_start(void)
 
 	answerPayload = PIOS_malloc(128);
 	if (!answerPayload) {
-		vPortFree(txPayload);
+		PIOS_free(txPayload);
 		return;
 	}
 
