@@ -318,14 +318,14 @@ int32_t draco_osd_comm_init(uint32_t spi_id, uint32_t slave_num, const struct os
 	dev->cfg = cfg;
 	dev->rxblock = PIOS_malloc(cfg->transfer_granularity);
 	if (!dev->rxblock) {
-		vPortFree(dev);
+		PIOS_free(dev);
 		return -1;
 	}
 
 	dev->txblock = PIOS_malloc(cfg->transfer_granularity);
 	if (!dev->txblock) {
-		vPortFree(dev->rxblock);
-		vPortFree(dev);
+		PIOS_free(dev->rxblock);
+		PIOS_free(dev);
 		return -1;
 	}
 
@@ -340,18 +340,18 @@ int32_t draco_osd_comm_init(uint32_t spi_id, uint32_t slave_num, const struct os
 
 	dev->irqsem = PIOS_Semaphore_Create();
 	if (!dev->irqsem) {
-		vPortFree(dev->rxblock);
-		vPortFree(dev->txblock);
-		vPortFree(dev);
+		PIOS_free(dev->rxblock);
+		PIOS_free(dev->txblock);
+		PIOS_free(dev);
 		return -2;
 	}
 
 	PIOS_Semaphore_Take(dev->irqsem, 0);
 
 	if (PIOS_EXTI_Init(cfg->exti_cfg) != 0) {
-		vPortFree(dev->rxblock);
-		vPortFree(dev->txblock);
-		vPortFree(dev);
+		PIOS_free(dev->rxblock);
+		PIOS_free(dev->txblock);
+		PIOS_free(dev);
 		return -2;
 	}
 
