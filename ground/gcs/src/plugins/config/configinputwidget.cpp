@@ -797,7 +797,6 @@ void ConfigInputWidget::fastMdata()
   */
 void ConfigInputWidget::restoreMdata()
 {
-    UAVObjectUtilManager* utilMngr = getObjectUtilManager();
     foreach (QString objName, originalMetaData.keys()) {
         UAVObject *obj = getObjectManager()->getObject(objName);
         obj->setMetadata(originalMetaData.value(objName));
