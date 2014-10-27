@@ -356,6 +356,14 @@ static const struct pios_flash_jedec_cfg flash_n25q_cfg = {
 	.expect_capacity     = 0x16,
 	.sector_erase        = 0x20,
 };
+
+static const struct pios_flash_jedec_cfg flash_s25fl032_cfg = {
+	.expect_manufacturer = 0x01, /* Spansion flash */
+	.expect_memorytype   = 0x02,
+	.expect_capacity     = 0x15,
+	.sector_erase        = 0x20,
+};
+
 #endif	/* PIOS_INCLUDE_FLASH_JEDEC */
 
 #if defined(PIOS_INCLUDE_FLASH_INTERNAL)
