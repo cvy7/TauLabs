@@ -74,12 +74,7 @@ void PIOS_Board_Init()
 	PIOS_Flash_Internal_Init(&pios_internal_flash_id, &flash_internal_cfg);
 
 #if defined(PIOS_INCLUDE_SPI)
-	/* probe for micron chip */
-	if (PIOS_Flash_Jedec_Init(&pios_external_flash_id, pios_spi_internal_id, 0, &flash_n25q_cfg) != 0) {
-		/* probe for spansison chip */
-		PIOS_Flash_Jedec_Init(&pios_external_flash_id, pios_spi_internal_id, 0, &flash_s25fl032_cfg);
-	}
-
+	PIOS_Flash_Jedec_Init(&pios_external_flash_id, pios_spi_internal_id, 0, &flash_n25q_cfg);
 #endif	/* PIOS_INCLUDE_SPI */
 
 	/* Register the partition table */
