@@ -42,8 +42,8 @@ Draco::Draco(void)
 {
     // Initialize our USB Structure definition here:
     USBInfo board;
-    board.vendorID = 0x1d50;
-    board.productID = 0xaaaa;
+    board.vendorID = 0xa600;
+    board.productID = 0xe8fe;
 
     setUSBInfo(board);
 

@@ -37,8 +37,8 @@
 
 #include "pios_usb_defs.h" 	/* struct usb_* */
 
-#define PIOS_USB_BOARD_VENDOR_ID 0x01d50		// OpenMoko, Inc.
-#define PIOS_USB_BOARD_PRODUCT_ID 0xaaaa	// draco fc
+#define PIOS_USB_BOARD_VENDOR_ID 0xa600		// Asix
+#define PIOS_USB_BOARD_PRODUCT_ID 0xe8fe	// draco fc
 #define PIOS_USB_BOARD_DEVICE_VER USB_OP_DEVICE_VER(0, USB_OP_BOARD_MODE_BL)
 #define PIOS_USB_BOARD_SN_SUFFIX "+BL"
 
