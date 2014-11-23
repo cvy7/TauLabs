@@ -5,8 +5,6 @@
 			<options>
 				<option>StateIdle</option>
 				<option>StateIdleBootloader</option>
-				<option>StateWriteIdle</option>
-				<option>StateReadIdle</option>
 				<option>EnterBootloader</option>
 				<option>ExitBootloader</option>
 				<option>StartWriteFw</option>
@@ -21,9 +19,10 @@
 				<option>NoError</option>
 				<option>FailedEnterBootloader</option>
 				<option>FailedExitBootloader</option>
+				<option>FailedGetVersion</option>
+				<option>FailedRead</option>
+				<option>FailedWrite</option>
 				<option>InvalidFwImage</option>
-				<option>WriteFailed</option>
-				<option>ReadFailed</option>
 			</options>
 		</field>
 		<field name="DataSize" units="" type="uint32" elements="1" defaultValue="0"/>
