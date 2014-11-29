@@ -33,7 +33,7 @@
 #include <extensionsystem/pluginmanager.h>
 
 #include "hwdraco.h"
-
+#include "dracoconfigurationwidget.h"
 /**
  * @brief Draco::Draco
  *  This is the Draco board definition
@@ -42,8 +42,8 @@ Draco::Draco(void)
 {
     // Initialize our USB Structure definition here:
     USBInfo board;
-    board.vendorID = 0x1d50;
-    board.productID = 0xaaaa;
+    board.vendorID = 0xa600;
+    board.productID = 0xe8fe;
 
     setUSBInfo(board);
 
@@ -134,4 +134,10 @@ int Draco::queryMaxGyroRate()
     default:
         return 500;
     }
+}
+
+QWidget * Draco::getBoardConfiguration(QWidget *parent, bool connected)
+{
+    Q_UNUSED(connected);
+    return new DracoConfigurationWidget(parent);
 }

@@ -30,6 +30,7 @@
 #include "pios.h"
 #ifdef DRACO_INCLUDE_OSD_SUPPORT
 #include <openpilot.h>
+#include "pios_semaphore.h"
 #include "physical_constants.h"
 #include "misc_math.h"
 #include "osd_task.h"
@@ -48,6 +49,7 @@
 #include "flighttelemetrystats.h"
 #include "actuatordesired.h"
 #include "hwdraco.h"
+#include "hwdracoosdfwupdate.h"
 #include "pios_thread.h"
 
 #if defined(PIOS_DRACO_OSD_STACK_SIZE)
@@ -65,6 +67,13 @@
 #define REQ_ID_SET_UNITS            12
 #define REQ_ID_FORCE_TV_SYSTEM      20
 
+#define REQ_ID_WRITE_START          128
+#define REQ_ID_WRITE_CHUNK          129
+#define REQ_ID_READ_START           130
+#define REQ_ID_READ_CHUNK           131
+#define REQ_ID_EXIT_BOOT            132
+#define REQ_ID_ENTER_BOOT           133
+
 #define DATA_ID_LED_CONTROL         0
 #define DATA_ID_PFD                 1
 #define DATA_ID_WAYPOINT_HOME       2
@@ -72,6 +81,12 @@
 #define DATA_ID_GNSS                4
 #define DATA_ID_POWER               5
 #define DATA_ID_STOPWATCH           6
+
+#define COMM_VERSION_MODE_FIRMWARE      1
+#define COMM_VERSION_MODE_BOOTLOADER    0
+
+#define COMM_RESULT_OK                  0
+#define COMM_RESULT_ERROR               1
 
 #define HUD_UNITS_METRIC            0
 #define HUD_UNITS_IMPERIAL          1
@@ -140,7 +155,9 @@ static struct pios_thread *dracoOsdTaskHandle;
 
 static uint8_t *txPayload;
 static uint8_t *answerPayload;
-static char versionString[24];
+static char versionString[33];
+static bool firstPass = true;
+static bool bootloaderMode = false;
 
 static AttitudeActualData attitudeActual;
 static PositionActualData positionActual;
@@ -152,27 +169,38 @@ static FlightStatusData flightStatus;
 static WaypointData waypointActual;
 static FlightTelemetryStatsData telemetryStats;
 static ActuatorDesiredData actuatorDesired;
+static HWDracoOsdFwUpdateData fwUpdate;
+static struct pios_semaphore *osdFwUpdateSem;
 
 static void dracoOsdTask(void *parameters);
 
 /**
  * Read version information from OSD MCU
  * This is used to test OSD MCU is alive
- * @return 0 when successful
+ * @param[out] versionString git describe of OSD firmware
+ * @param[out] mode whether MCU is in firmware or bootloader mode
+ * @param[in] versionLen maximum length of versionString
+ * @return true when successful
  */
-static int32_t getVersion(void)
+static bool getVersion(uint8_t *mode, char *versionString, uint8_t versionLen)
 {
-	versionString[0] = 0;
+	if (versionString)
+		versionString[0] = 0;
 	txPayload[0] = REQ_ID_VERSION;
 	uint8_t ansLen = 0;
 	if (draco_osd_comm_send_request(txPayload, 1, answerPayload, &ansLen) != 0)
-		return -1;
-	if ((ansLen < 26) && (ansLen > 2)) {
-		versionString[ansLen - 2] = 0;
-		memcpy(versionString, &answerPayload[2], ansLen - 2);
-		return 0;
+		return false;
+
+	if ((ansLen < (versionLen + 1)) && (ansLen > 2)) {
+		if (versionString != 0) {
+			versionString[ansLen - 1] = 0;
+			memcpy(versionString, &answerPayload[1], ansLen - 1);
+		}
+		if (mode != 0)
+			*mode = answerPayload[0];
+		return true;
 	}
-	return -2;
+	return false;
 }
 
 /**
@@ -495,20 +523,287 @@ static void hudSendWaypoints(bool showNaviWp)
 }
 
 /**
+ * Enter bootloader mode
+ * @return true if successful
+ */
+static bool osdEnterBootloader(void)
+{
+	txPayload[0] = REQ_ID_ENTER_BOOT;
+	uint8_t ansLen;
+	if (draco_osd_comm_send_request(txPayload, 1, answerPayload, &ansLen) != 0)
+		return false;
+
+	if ((ansLen < 1) || (answerPayload[0] != COMM_RESULT_OK))
+		return false;
+	else
+		return true;
+}
+
+/**
+ * Exit bootloader mode
+ * @return 0 if successful, -1 when reques timeout and -2 if FW image is invalid
+ */
+static int32_t osdExitBootloader(void)
+{
+	txPayload[0] = REQ_ID_EXIT_BOOT;
+	uint8_t ansLen = 0;
+	if (draco_osd_comm_send_request(txPayload, 1, answerPayload, &ansLen) != 0)
+		return -1;
+
+	if ((ansLen < 1) || (answerPayload[0] != COMM_RESULT_OK))
+		return -2;
+	else
+		return 0;
+}
+
+/**
+ * Start flash memory write operation
+ * @param[in] offset in flash memory
+ * @param[in] size firmware image size
+ * @return true if successful
+ */
+static bool osdStartWriteFw(uint32_t offset, uint32_t size)
+{
+	txPayload[0] = REQ_ID_WRITE_START;
+	txPayload[1] = size & 0xff;
+	txPayload[2] = (size >> 8) & 0xff;
+	txPayload[3] = (size >> 16) & 0xff;
+	txPayload[4] = (size >> 24) & 0xff;
+	txPayload[5] = offset & 0xff;
+	txPayload[6] = (offset >> 8) & 0xff;
+	txPayload[7] = (offset >> 16) & 0xff;
+	txPayload[8] = (offset >> 24) & 0xff;
+
+	uint8_t ansLen = 0;
+	if (draco_osd_comm_send_request(txPayload, 9, answerPayload, &ansLen) != 0)
+		return false;
+
+	if ((ansLen < 1) || (answerPayload[0] != COMM_RESULT_OK))
+		return false;
+
+	return true;
+}
+
+/**
+ * Write chunk of data to flash
+ * @param[in] data pointer to data to write
+ * @param[in] len length of data
+ * @return true if successful
+ */
+static bool osdWriteChunk(const uint8_t *data, uint8_t len)
+{
+	if (!len)
+		return true;
+	if (!data || len > 254)
+		return false;
+
+	txPayload[0] = REQ_ID_WRITE_CHUNK;
+	memcpy(&txPayload[1], data, len);
+
+	uint8_t ansLen = 0;
+	if (draco_osd_comm_send_request(txPayload, len + 1, answerPayload, &ansLen) != 0)
+		return false;
+
+	if ((ansLen < 1) || (answerPayload[0] != COMM_RESULT_OK))
+		return false;
+
+	return true;
+}
+
+/**
+ * Start read flash memory operation
+ * @param[in] offset in flash memory
+ * @return true if successful
+ */
+static bool osdStartReadFw(uint32_t offset)
+{
+	txPayload[0] = REQ_ID_READ_START;
+	txPayload[1] = offset & 0xff;
+	txPayload[2] = (offset >> 8) & 0xff;
+	txPayload[3] = (offset >> 16) & 0xff;
+	txPayload[4] = (offset >> 24) & 0xff;
+
+	uint8_t ansLen = 0;
+	if (draco_osd_comm_send_request(txPayload, 5, answerPayload, &ansLen) != 0)
+		return false;
+
+	if ((ansLen < 1) || (answerPayload[0] != COMM_RESULT_OK))
+		return false;
+
+	return true;
+}
+
+/**
+ * Write chunk of data to flash
+ * @param[out] data pointer to data
+ * @param[in] len read size (mustn't exceed data buffer)
+ * @return true if successful
+ */
+static bool osdReadChunk(uint8_t *data, uint8_t len)
+{
+	if (!len)
+		return true;
+	if (!data || len > 254)
+		return false;
+
+	txPayload[0] = REQ_ID_READ_CHUNK;
+	txPayload[1] = len;
+
+	uint8_t ansLen = 0;
+	if (draco_osd_comm_send_request(txPayload, 2, answerPayload, &ansLen) != 0)
+		return false;
+
+	if ((ansLen < (1 + len)) || (answerPayload[0] != COMM_RESULT_OK))
+		return false;
+
+	memcpy(data, &answerPayload[1], len);
+	return true;
+}
+
+/**
+ * DracoOSDFwUpdate UAVO was just updated
+ */
+void hwDracoOsdFwUpdateEvent(UAVObjEvent* ev)
+{
+	(void) ev;
+	PIOS_Semaphore_Give(osdFwUpdateSem);
+}
+
+/**
+ * Process DracoOSDFwUpdate UAVO from osdTask thread context
+ */
+void hwDracoOsdFwUpdateProcessObjectChange(void)
+{
+	HWDracoOsdFwUpdateGet(&fwUpdate);
+	if (fwUpdate.Control == HWDRACOOSDFWUPDATE_CONTROL_GETVERSION) {
+		uint8_t mode;
+		if (getVersion(&mode, versionString, sizeof(versionString))) {
+			strncpy((char*)fwUpdate.Data, versionString, sizeof(fwUpdate.Data));
+			fwUpdate.DataSize = strnlen((char*)fwUpdate.Data, sizeof(fwUpdate.Data));
+			if (mode == COMM_VERSION_MODE_FIRMWARE) {
+				bootloaderMode = false;
+				fwUpdate.Control = HWDRACOOSDFWUPDATE_CONTROL_STATEIDLE;
+			} else if (mode == COMM_VERSION_MODE_BOOTLOADER) {
+				bootloaderMode = true;
+				fwUpdate.Control = HWDRACOOSDFWUPDATE_CONTROL_STATEIDLEBOOTLOADER;
+			}
+			fwUpdate.Error = HWDRACOOSDFWUPDATE_ERROR_NOERROR;
+			HWDracoOsdFwUpdateSet(&fwUpdate);
+		} else {
+			fwUpdate.DataSize = 0;
+			fwUpdate.Control = (bootloaderMode) ? HWDRACOOSDFWUPDATE_CONTROL_STATEIDLEBOOTLOADER :
+					HWDRACOOSDFWUPDATE_CONTROL_STATEIDLE;
+			fwUpdate.Error = HWDRACOOSDFWUPDATE_ERROR_FAILEDGETVERSION;
+			HWDracoOsdFwUpdateSet(&fwUpdate);
+		}
+	} else if (fwUpdate.Control == HWDRACOOSDFWUPDATE_CONTROL_ENTERBOOTLOADER) {
+		if (osdEnterBootloader()) {
+			// wait until OSD MCU end up in bootloader mode
+			PIOS_Thread_Sleep(100);
+			bootloaderMode = true;
+			fwUpdate.DataSize = 0;
+			fwUpdate.Control = HWDRACOOSDFWUPDATE_CONTROL_STATEIDLEBOOTLOADER;
+			fwUpdate.Error = HWDRACOOSDFWUPDATE_ERROR_NOERROR;
+		} else {
+			fwUpdate.DataSize = 0;
+			fwUpdate.Control = (bootloaderMode) ? HWDRACOOSDFWUPDATE_CONTROL_STATEIDLEBOOTLOADER :
+					HWDRACOOSDFWUPDATE_CONTROL_STATEIDLE;
+			fwUpdate.Error = HWDRACOOSDFWUPDATE_ERROR_FAILEDENTERBOOTLOADER;
+		}
+		HWDracoOsdFwUpdateSet(&fwUpdate);
+	} else if (fwUpdate.Control == HWDRACOOSDFWUPDATE_CONTROL_EXITBOOTLOADER) {
+		int res = osdExitBootloader();
+		if (res == 0) {
+			// wait until OSD MCU end up in firmware mode
+			PIOS_Thread_Sleep(100);
+			bootloaderMode = false;
+			fwUpdate.DataSize = 0;
+			fwUpdate.Control = HWDRACOOSDFWUPDATE_CONTROL_STATEIDLE;
+			fwUpdate.Error = HWDRACOOSDFWUPDATE_ERROR_NOERROR;
+		} else if (res == -1) {
+			fwUpdate.DataSize = 0;
+			fwUpdate.Control = (bootloaderMode) ? HWDRACOOSDFWUPDATE_CONTROL_STATEIDLEBOOTLOADER :
+					HWDRACOOSDFWUPDATE_CONTROL_STATEIDLE;
+			fwUpdate.Error = HWDRACOOSDFWUPDATE_ERROR_FAILEDEXITBOOTLOADER;
+		} else {
+			bootloaderMode = true;
+			fwUpdate.DataSize = 0;
+			fwUpdate.Control = HWDRACOOSDFWUPDATE_CONTROL_STATEIDLEBOOTLOADER;
+			fwUpdate.Error = HWDRACOOSDFWUPDATE_ERROR_INVALIDFWIMAGE;
+		}
+		HWDracoOsdFwUpdateSet(&fwUpdate);
+	} else if (fwUpdate.Control == HWDRACOOSDFWUPDATE_CONTROL_STARTWRITEFW) {
+		if (osdStartWriteFw(0, fwUpdate.DataSize)) {
+			fwUpdate.DataSize = 0;
+			fwUpdate.Control = HWDRACOOSDFWUPDATE_CONTROL_STATEIDLEBOOTLOADER;
+			fwUpdate.Error = HWDRACOOSDFWUPDATE_ERROR_NOERROR;
+		} else {
+			fwUpdate.DataSize = 0;
+			fwUpdate.Control = (bootloaderMode) ? HWDRACOOSDFWUPDATE_CONTROL_STATEIDLEBOOTLOADER :
+					HWDRACOOSDFWUPDATE_CONTROL_STATEIDLE;
+			fwUpdate.Error = HWDRACOOSDFWUPDATE_ERROR_FAILEDWRITE;
+		}
+		HWDracoOsdFwUpdateSet(&fwUpdate);
+	} else if (fwUpdate.Control == HWDRACOOSDFWUPDATE_CONTROL_WRITECHUNK) {
+		if (osdWriteChunk(fwUpdate.Data, (uint8_t)fwUpdate.DataSize)) {
+			fwUpdate.DataSize = 0;
+			fwUpdate.Control = HWDRACOOSDFWUPDATE_CONTROL_STATEIDLEBOOTLOADER;
+			fwUpdate.Error = HWDRACOOSDFWUPDATE_ERROR_NOERROR;
+		} else {
+			fwUpdate.DataSize = 0;
+			fwUpdate.Control = (bootloaderMode) ? HWDRACOOSDFWUPDATE_CONTROL_STATEIDLEBOOTLOADER :
+					HWDRACOOSDFWUPDATE_CONTROL_STATEIDLE;
+			fwUpdate.Error = HWDRACOOSDFWUPDATE_ERROR_FAILEDWRITE;
+		}
+		HWDracoOsdFwUpdateSet(&fwUpdate);
+	} else if (fwUpdate.Control == HWDRACOOSDFWUPDATE_CONTROL_STARTREADFW) {
+		if (osdStartReadFw(0)) {
+			fwUpdate.DataSize = 0;
+			fwUpdate.Control = HWDRACOOSDFWUPDATE_CONTROL_STATEIDLEBOOTLOADER;
+			fwUpdate.Error = HWDRACOOSDFWUPDATE_ERROR_NOERROR;
+		} else {
+			fwUpdate.DataSize = 0;
+			fwUpdate.Control = (bootloaderMode) ? HWDRACOOSDFWUPDATE_CONTROL_STATEIDLEBOOTLOADER :
+					HWDRACOOSDFWUPDATE_CONTROL_STATEIDLE;
+			fwUpdate.Error = HWDRACOOSDFWUPDATE_ERROR_FAILEDREAD;
+		}
+		HWDracoOsdFwUpdateSet(&fwUpdate);
+	} else if (fwUpdate.Control == HWDRACOOSDFWUPDATE_CONTROL_READCHUNK) {
+		if (fwUpdate.DataSize <= sizeof(fwUpdate.Data) && osdReadChunk(fwUpdate.Data, (uint8_t)fwUpdate.DataSize)) {
+			fwUpdate.Control = HWDRACOOSDFWUPDATE_CONTROL_STATEIDLEBOOTLOADER;
+			fwUpdate.Error = HWDRACOOSDFWUPDATE_ERROR_NOERROR;
+		} else {
+			fwUpdate.DataSize = 0;
+			fwUpdate.Control = (bootloaderMode) ? HWDRACOOSDFWUPDATE_CONTROL_STATEIDLEBOOTLOADER :
+					HWDRACOOSDFWUPDATE_CONTROL_STATEIDLE;
+			fwUpdate.Error = HWDRACOOSDFWUPDATE_ERROR_FAILEDREAD;
+		}
+		HWDracoOsdFwUpdateSet(&fwUpdate);
+	}
+}
+/**
  * Initialize and start task
  */
 void draco_osd_task_start(void)
 {
-	txPayload = PIOS_malloc(128);
+	txPayload = PIOS_malloc(256);
 	if (!txPayload)
 		return;
 
-	answerPayload = PIOS_malloc(128);
+	answerPayload = PIOS_malloc(256);
 	if (!answerPayload) {
 		PIOS_free(txPayload);
 		return;
 	}
 
+	osdFwUpdateSem = PIOS_Semaphore_Create();
+	if (!osdFwUpdateSem) {
+		PIOS_free(txPayload);
+		PIOS_free(answerPayload);
+		return;
+	}
+
+	HWDracoOsdFwUpdateInitialize();
 	dracoOsdTaskHandle = PIOS_Thread_Create(dracoOsdTask, "dracoOsdTask",
 			STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
 }
@@ -521,7 +816,18 @@ static void dracoOsdTask(void *parameters)
 	uint32_t lastTime = PIOS_Thread_Systime();
 
 	PIOS_Thread_Sleep(100);
-	getVersion();
+	uint8_t fwMode = 0;
+	if (getVersion(&fwMode, versionString, sizeof(versionString))) {
+		if (fwMode == COMM_VERSION_MODE_BOOTLOADER) {
+			fwUpdate.Control = HWDRACOOSDFWUPDATE_CONTROL_STATEIDLEBOOTLOADER;
+			fwUpdate.DataSize = 0;
+			HWDracoOsdFwUpdateSet(&fwUpdate);
+			bootloaderMode = true;
+		}
+	}
+
+	HWDracoOsdFwUpdateConnectCallback(hwDracoOsdFwUpdateEvent);
+
 	uint8_t osdEnabled = 0;
 	HwDracoOSDEnableGet(&osdEnabled);
 
@@ -557,13 +863,21 @@ static void dracoOsdTask(void *parameters)
 		useBattery = true;
 	}
 
-	bool firstPass = true;
 	uint8_t gpsStatusLast = 0;
 	float throttleLast = 0;
 	bool throttleActiveChange = false;
 	uint8_t alarmStatusLast = getAlarmStatus();
 	uint8_t telemetryStatusLast = FLIGHTTELEMETRYSTATS_STATUS_DISCONNECTED;
 	while (1) {
+		// check and process for HwDracoOsdFwUpdate command
+		// and continue with checking and processomg if OSD bootloader mode
+		// is active
+		do {
+			if (PIOS_Semaphore_Take(osdFwUpdateSem, bootloaderMode ? PIOS_SEMAPHORE_TIMEOUT_MAX : 0))
+				hwDracoOsdFwUpdateProcessObjectChange();
+		} while(bootloaderMode);
+
+		// process loop at OSD refresh rate
 		draco_osd_comm_wait(1000 / TASK_RATE_HZ);
 		uint32_t currentTime = PIOS_Thread_Systime();
 		if ((currentTime > lastTime) && ((currentTime - lastTime) < (1000 / TASK_RATE_HZ)))

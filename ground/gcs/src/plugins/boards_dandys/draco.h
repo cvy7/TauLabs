@@ -45,6 +45,7 @@ public:
     virtual QPixmap getBoardPicture();
     virtual QString getHwUAVO();
     virtual int queryMaxGyroRate();
+    virtual QWidget *getBoardConfiguration(QWidget *parent, bool connected);
 };
 
 

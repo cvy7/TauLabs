@@ -433,9 +433,9 @@ static const struct pios_flash_partition pios_flash_partition_table[] = {
 		.label        = FLASH_PARTITION_LABEL_FW,
 		.chip_desc    = &pios_flash_chip_internal,
 		.first_sector = 5,
-		.last_sector  = 6,
+		.last_sector  = 7,
 		.chip_offset  = (4 * FLASH_SECTOR_16KB) + (1 * FLASH_SECTOR_64KB),
-		.size         = (6 - 5 + 1) * FLASH_SECTOR_128KB,
+		.size         = (3 * FLASH_SECTOR_128KB),
 	},
 
 	/* NOTE: sectors 7-11 of the internal flash are currently unallocated */
