@@ -33,7 +33,7 @@
 #include <extensionsystem/pluginmanager.h>
 
 #include "hwdraco.h"
-
+#include "dracoconfigurationwidget.h"
 /**
  * @brief Draco::Draco
  *  This is the Draco board definition
@@ -134,4 +134,10 @@ int Draco::queryMaxGyroRate()
     default:
         return 500;
     }
+}
+
+QWidget * Draco::getBoardConfiguration(QWidget *parent, bool connected)
+{
+    Q_UNUSED(connected);
+    return new DracoConfigurationWidget(parent);
 }
