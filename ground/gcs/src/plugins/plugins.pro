@@ -355,5 +355,7 @@ SUBDIRS += plugin_boards_stm
 # Dandys boards
 plugin_boards_dandys.subdir = boards_dandys
 plugin_boards_dandys.depends = plugin_coreplugin
-plugin_boards_dandys.depends = plugin_uavobjects
+plugin_boards_dandys.depends += plugin_uavobjects
+plugin_boards_dandys.depends += plugin_uavobjectutil
+plugin_boards_dandys.depends += plugin_uavobjectwidgetutils
 SUBDIRS += plugin_boards_dandys

@@ -1,0 +1,35 @@
+<xml>
+	<object name="HWDracoOsdFwUpdate" singleinstance="true" settings="false">
+		<description>communication with OSD MCU bootloader</description>
+		<field name="Control" units="" type="enum" elements="1" defaultValue="Idle">
+			<options>
+				<option>StateIdle</option>
+				<option>StateIdleBootloader</option>
+				<option>EnterBootloader</option>
+				<option>ExitBootloader</option>
+				<option>StartWriteFw</option>
+				<option>WriteChunk</option>
+				<option>StartReadFw</option>
+				<option>ReadChunk</option>
+				<option>GetVersion</option>
+			</options>
+		</field>
+		<field name="Error" units="" type="enum" elements="1" defaultValue="NoError">
+			<options>
+				<option>NoError</option>
+				<option>FailedEnterBootloader</option>
+				<option>FailedExitBootloader</option>
+				<option>FailedGetVersion</option>
+				<option>FailedRead</option>
+				<option>FailedWrite</option>
+				<option>InvalidFwImage</option>
+			</options>
+		</field>
+		<field name="DataSize" units="" type="uint32" elements="1" defaultValue="0"/>
+		<field name="Data" units="" type="uint8" elements="64" defaultValue="0"/>
+		<access gcs="readwrite" flight="readwrite"/>
+		<telemetrygcs acked="true" updatemode="onchange" period="0"/>
+		<telemetryflight acked="true" updatemode="onchange" period="0"/>
+		<logging updatemode="manual" period="0"/>
+	</object>
+</xml>
