@@ -337,13 +337,13 @@ void PIOS_I2C_external_er_irq_handler(void)
 
 static const struct flashfs_logfs_cfg flashfs_settings_cfg = {
 	.fs_magic      = 0x3bb141cf,
-	.arena_size    = 0x00010000, /* 256 * slot size */
+	.arena_size    = 0x00004000, /* 64 * slot size */
 	.slot_size     = 0x00000100, /* 256 bytes */
 };
 
 static const struct flashfs_logfs_cfg flashfs_waypoints_cfg = {
 	.fs_magic      = 0x9a365a64,
-	.arena_size    = 0x00010000, /* 1024 * slot size */
+	.arena_size    = 0x00004000, /* 256 * slot size */
 	.slot_size     = 0x00000040, /* 64 bytes */
 };
 
@@ -447,18 +447,27 @@ static const struct pios_flash_partition pios_flash_partition_table[] = {
 		.label        = FLASH_PARTITION_LABEL_SETTINGS,
 		.chip_desc    = &pios_flash_chip_external,
 		.first_sector = 0,
-		.last_sector  = 511,
+		.last_sector  = 15,
 		.chip_offset  = 0,
-		.size         = (511 - 0 + 1) * FLASH_SECTOR_4KB,
+		.size         = (15 - 0 + 1) * FLASH_SECTOR_4KB,
 	},
 
 	{
 		.label        = FLASH_PARTITION_LABEL_WAYPOINTS,
 		.chip_desc    = &pios_flash_chip_external,
-		.first_sector = 512,
+		.first_sector = 16,
+		.last_sector  = 31,
+		.chip_offset  = (16 * FLASH_SECTOR_4KB),
+		.size         = (31 - 16 + 1) * FLASH_SECTOR_4KB,
+	},
+
+	{
+		.label        = FLASH_PARTITION_LABEL_LOG,
+		.chip_desc    = &pios_flash_chip_external,
+		.first_sector = 32,
 		.last_sector  = 1023,
-		.chip_offset  = (512 * FLASH_SECTOR_4KB),
-		.size         = (1023 - 512 + 1) * FLASH_SECTOR_4KB,
+		.chip_offset  = (32 * FLASH_SECTOR_4KB),
+		.size         = (1023 - 32 + 1) * FLASH_SECTOR_4KB,
 	},
 #endif	/* PIOS_INCLUDE_FLASH_JEDEC */
 };
@@ -471,6 +480,12 @@ const struct pios_flash_partition * PIOS_BOARD_HW_DEFS_GetPartitionTable (uint32
 	return pios_flash_partition_table;
 }
 
+#include "pios_streamfs_priv.h"
+const struct streamfs_cfg streamfs_settings = {
+		.fs_magic      = 0x89abceef,
+		.arena_size    = 0x00001000, /* 64 KB */
+		.write_size    = 0x00000100, /* 256 bytes */
+};
 #endif	/* PIOS_INCLUDE_FLASH */
 
 #if defined(PIOS_INCLUDE_USART)
