@@ -26,7 +26,7 @@
 /*
  * Board identifier.
  */
-#define BOARD_QUANTEC_QUANTON
+#define BOARD_DRACO
 #define BOARD_NAME                  "draco flight control"
 
 
