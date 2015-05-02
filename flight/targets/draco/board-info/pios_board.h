@@ -104,6 +104,7 @@ TIM8  |           |           |           |
 #define PIOS_I2C_MAX_DEVS				1
 extern uint32_t pios_i2c_external_adapter_id;
 #define PIOS_I2C_ETASV3_ADAPTER			(pios_i2c_external_adapter_id) //this is dirty and should be removed in favor a cleaner sensor api
+#define PIOS_I2C_ADAPTER_0			(pios_i2c_external_adapter_id) // picoC
 
 
 
