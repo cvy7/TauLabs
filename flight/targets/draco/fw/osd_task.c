@@ -412,6 +412,12 @@ static const char *getModeText(void)
 		return "TABLET";
 	case FLIGHTSTATUS_FLIGHTMODE_VELOCITYCONTROL:
 		return "VELCTRL";
+	case FLIGHTSTATUS_FLIGHTMODE_MWRATE:
+		return "MWRATE";
+	case FLIGHTSTATUS_FLIGHTMODE_HORIZON:
+		return "HORIZON";
+	case FLIGHTSTATUS_FLIGHTMODE_AXISLOCK:
+		return "AXISLK";
 	default:
 		return "UNKNOWN";
 	}
