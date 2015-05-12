@@ -30,7 +30,10 @@
  */
 
 /* Project Includes */
+#if !defined(_GNU_SOURCE)
 #define _GNU_SOURCE
+#endif /* !defined(_GNU_SOURCE) */
+
 #include "pios.h"
 
 #if defined(PIOS_INCLUDE_SYS)
@@ -105,8 +108,14 @@ void PIOS_SYS_Init(void)
 
 		// Underflow is fairly harmless, do we even care in debug
 		// mode?
+#ifndef __APPLE__
 		feenableexcept(FE_DIVBYZERO | FE_UNDERFLOW | FE_OVERFLOW |
 			FE_INVALID);
+#else
+		// XXX need the right magic
+		printf("UNABLE TO DBEUG FPE ON OSX!\n");
+		exit(1);
+#endif
 	}
 }
 
