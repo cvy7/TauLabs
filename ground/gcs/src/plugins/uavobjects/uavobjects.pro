@@ -82,6 +82,7 @@ HEADERS += $$UAVOBJECT_SYNTHETICS/accels.h \
     $$UAVOBJECT_SYNTHETICS/hwdracoosdfwupdate.h \
     $$UAVOBJECT_SYNTHETICS/hwsparkybgc.h \
     $$UAVOBJECT_SYNTHETICS/hwtaulink.h \
+    $$UAVOBJECT_SYNTHETICS/hwsparky2.h \
     $$UAVOBJECT_SYNTHETICS/i2cvm.h \
     $$UAVOBJECT_SYNTHETICS/i2cvmuserprogram.h \
     $$UAVOBJECT_SYNTHETICS/inssettings.h \
@@ -201,6 +202,7 @@ SOURCES += $$UAVOBJECT_SYNTHETICS/accels.cpp \
     $$UAVOBJECT_SYNTHETICS/hwdracoosdfwupdate.cpp \
     $$UAVOBJECT_SYNTHETICS/hwsparkybgc.cpp \
     $$UAVOBJECT_SYNTHETICS/hwtaulink.cpp \
+    $$UAVOBJECT_SYNTHETICS/hwsparky2.cpp \
     $$UAVOBJECT_SYNTHETICS/i2cvm.cpp \
     $$UAVOBJECT_SYNTHETICS/i2cvmuserprogram.cpp \
     $$UAVOBJECT_SYNTHETICS/inssettings.cpp \
