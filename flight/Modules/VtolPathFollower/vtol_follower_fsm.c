@@ -822,8 +822,6 @@ static void go_enable_land_emergency_nogps(void)
 	vtol_hold_position_ned[0] = 0; // Has no effect
 	vtol_hold_position_ned[1] = 0; // Has no effect
 	vtol_hold_position_ned[2] = 0; // Has no affect
-
-	configure_timeout(0);
 }
 
 /**
