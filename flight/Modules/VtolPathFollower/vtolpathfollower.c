@@ -39,6 +39,7 @@
 
 #include "acceldesired.h"
 #include "altitudeholdsettings.h"
+#include "altitudeholdstate.h"
 #include "modulesettings.h"
 #include "pathdesired.h"        // object that will be updated by the module
 #include "flightstatus.h"
@@ -109,6 +110,7 @@ int32_t VtolPathFollowerInitialize()
 
 	AccelDesiredInitialize();
 	AltitudeHoldSettingsInitialize();
+	AltitudeHoldStateInitialize();
 	PathDesiredInitialize();
 	PathStatusInitialize();
 	VelocityDesiredInitialize();
@@ -210,7 +212,7 @@ static void vtolPathFollowerTask(void *parameters)
 			StabilizationDesiredThrottleGet(&vtol_pids[DOWN_VELOCITY].iAccumulator);
 			// pid library scales up accumulator by 1000. Note the negative sign because this
 			// is the accumulation for down.
-			vtol_pids[DOWN_VELOCITY].iAccumulator *= -1000.0f; 
+			vtol_pids[DOWN_VELOCITY].iAccumulator *= -1000.0f;
 		}
 
 		AlarmsClear(SYSTEMALARMS_ALARM_PATHFOLLOWER);
