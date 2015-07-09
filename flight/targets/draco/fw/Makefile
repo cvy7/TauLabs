@@ -134,6 +134,7 @@ include $(PIOS)/STM32F4xx/library_chibios.mk
 SRC += $(PIOSCOMMON)/pios_delay.c
 SRC += $(PIOSCOMMON)/pios_gcsrcvr.c
 SRC += $(PIOSCOMMON)/pios_hmc5883.c
+SRC += $(PIOSCOMMON)/pios_hmc5983_i2c.c
 SRC += $(PIOSCOMMON)/pios_ms5611_spi.c
 SRC += $(PIOSCOMMON)/pios_mpu9250_spi.c
 SRC += $(PIOSCOMMON)/pios_etasv3.c

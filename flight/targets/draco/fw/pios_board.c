@@ -59,6 +59,18 @@ static const struct pios_hmc5883_cfg pios_hmc5883_external_cfg = {
 };
 #endif /* PIOS_INCLUDE_HMC5883 */
 
+#if defined(PIOS_INCLUDE_HMC5983_I2C)
+#include "pios_hmc5983.h"
+static const struct pios_hmc5983_cfg pios_hmc5983_external_cfg = {
+	.M_ODR = PIOS_HMC5983_ODR_75,
+	.Meas_Conf = PIOS_HMC5983_MEASCONF_NORMAL,
+	.Gain = PIOS_HMC5983_GAIN_1_9,
+	.Mode = PIOS_HMC5983_MODE_SINGLE,
+	.Orientation = PIOS_HMC5983_TOP_0DEG,
+};
+#endif /* PIOS_INCLUDE_HMC5983_I2C */
+
+
 /**
  * Configuration for the MS5611 chip
  */
@@ -315,7 +327,7 @@ static void PIOS_Board_configure_hsum(const struct pios_usart_cfg *pios_usart_hs
  * Indicate a target-specific error code when a component fails to initialize
  * 1 pulse - flash chip
  * 2 pulses - MPU9250
- * 3 pulses - external HMC5883
+ * 3 pulses - external compass error
  * 4 pulses - MS5611
  * 5 pulses - external I2C bus locked
  */
@@ -978,27 +990,59 @@ void PIOS_Board_Init(void) {
 	uint8_t hw_magnetometer;
 	HwDracoMagnetometerGet(&hw_magnetometer);
 #if defined(PIOS_INCLUDE_I2C)
+	if (PIOS_I2C_CheckClear(pios_i2c_external_adapter_id) != 0)
+		panic(5);
+#if defined(PIOS_INCLUDE_HMC5983_I2C)
+	{
+		if (hw_magnetometer == HWDRACO_MAGNETOMETER_EXTERNALI2C_HMC5983) {
+			if (PIOS_HMC5983_Init(pios_i2c_external_adapter_id, 0, &pios_hmc5983_external_cfg) == 0) {
+
+				if (PIOS_HMC5983_Test() != 0)
+					AlarmsSet(SYSTEMALARMS_ALARM_I2C, SYSTEMALARMS_ALARM_CRITICAL);
+
+				uint8_t ExtMagOrientation;
+				HwDracoExtMagOrientationGet(&ExtMagOrientation);
+				enum pios_hmc5983_orientation hmc5983_orientation = \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_TOP0DEGCW) ? PIOS_HMC5983_TOP_0DEG : \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_TOP90DEGCW) ? PIOS_HMC5983_TOP_90DEG : \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_TOP180DEGCW) ? PIOS_HMC5983_TOP_180DEG : \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_TOP270DEGCW) ? PIOS_HMC5983_TOP_270DEG : \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_BOTTOM0DEGCW) ? PIOS_HMC5983_BOTTOM_0DEG : \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_BOTTOM90DEGCW) ? PIOS_HMC5983_BOTTOM_90DEG : \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_BOTTOM180DEGCW) ? PIOS_HMC5983_BOTTOM_180DEG : \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_BOTTOM270DEGCW) ? PIOS_HMC5983_BOTTOM_270DEG : \
+					pios_hmc5983_external_cfg.Orientation;
+				PIOS_HMC5983_SetOrientation(hmc5983_orientation);
+			} else {
+				AlarmsSet(SYSTEMALARMS_ALARM_I2C, SYSTEMALARMS_ALARM_CRITICAL);
+			}
+		}
+	}
+#endif
+
 #if defined(PIOS_INCLUDE_HMC5883)
 	{
-		if (hw_magnetometer == HWDRACO_MAGNETOMETER_EXTERNALI2C) {
-			if (PIOS_HMC5883_Init(pios_i2c_external_adapter_id, &pios_hmc5883_external_cfg) != 0)
-				panic(3);
-			if (PIOS_HMC5883_Test() != 0)
-				panic(3);
+		if (hw_magnetometer == HWDRACO_MAGNETOMETER_EXTERNALI2C_HMC5883) {
+			if (PIOS_HMC5883_Init(pios_i2c_external_adapter_id, &pios_hmc5883_external_cfg) == 0) {
+				if (PIOS_HMC5883_Test() != 0)
+					AlarmsSet(SYSTEMALARMS_ALARM_I2C, SYSTEMALARMS_ALARM_CRITICAL);
 
-			uint8_t ExtMagOrientation;
-			HwDracoExtMagOrientationGet(&ExtMagOrientation);
-			enum pios_hmc5883_orientation hmc5883_orientation = \
-				(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_TOP0DEGCW) ? PIOS_HMC5883_TOP_0DEG : \
-				(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_TOP90DEGCW) ? PIOS_HMC5883_TOP_90DEG : \
-				(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_TOP180DEGCW) ? PIOS_HMC5883_TOP_180DEG : \
-				(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_TOP270DEGCW) ? PIOS_HMC5883_TOP_270DEG : \
-				(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_BOTTOM0DEGCW) ? PIOS_HMC5883_BOTTOM_0DEG : \
-				(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_BOTTOM90DEGCW) ? PIOS_HMC5883_BOTTOM_90DEG : \
-				(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_BOTTOM180DEGCW) ? PIOS_HMC5883_BOTTOM_180DEG : \
-				(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_BOTTOM270DEGCW) ? PIOS_HMC5883_BOTTOM_270DEG : \
-				pios_hmc5883_external_cfg.Default_Orientation;
-			PIOS_HMC5883_SetOrientation(hmc5883_orientation);
+				uint8_t ExtMagOrientation;
+				HwDracoExtMagOrientationGet(&ExtMagOrientation);
+				enum pios_hmc5883_orientation hmc5883_orientation = \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_TOP0DEGCW) ? PIOS_HMC5883_TOP_0DEG : \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_TOP90DEGCW) ? PIOS_HMC5883_TOP_90DEG : \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_TOP180DEGCW) ? PIOS_HMC5883_TOP_180DEG : \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_TOP270DEGCW) ? PIOS_HMC5883_TOP_270DEG : \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_BOTTOM0DEGCW) ? PIOS_HMC5883_BOTTOM_0DEG : \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_BOTTOM90DEGCW) ? PIOS_HMC5883_BOTTOM_90DEG : \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_BOTTOM180DEGCW) ? PIOS_HMC5883_BOTTOM_180DEG : \
+					(ExtMagOrientation == HWDRACO_EXTMAGORIENTATION_BOTTOM270DEGCW) ? PIOS_HMC5883_BOTTOM_270DEG : \
+					pios_hmc5883_external_cfg.Default_Orientation;
+				PIOS_HMC5883_SetOrientation(hmc5883_orientation);
+			} else {
+				AlarmsSet(SYSTEMALARMS_ALARM_I2C, SYSTEMALARMS_ALARM_CRITICAL);
+			}
 		}
 	}
 #endif
