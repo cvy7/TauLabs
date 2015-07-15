@@ -213,11 +213,9 @@ Section "Firmware" InSecFirmware
   File "${PACKAGE_DIR}\${FIRMWARE_DIR}\fw_flyingf4-${PACKAGE_LBL}.tlfw"
   File "${PACKAGE_DIR}\${FIRMWARE_DIR}\fw_quanton-${PACKAGE_LBL}.tlfw"
   File "${PACKAGE_DIR}\${FIRMWARE_DIR}\fw_colibri-${PACKAGE_LBL}.tlfw"
-  File "${PACKAGE_DIR}\${FIRMWARE_DIR}\fw_freedom-${PACKAGE_LBL}.tlfw"
   File "${PACKAGE_DIR}\${FIRMWARE_DIR}\fw_sparky-${PACKAGE_LBL}.tlfw"
   File "${PACKAGE_DIR}\${FIRMWARE_DIR}\fw_sparkybgc-${PACKAGE_LBL}.tlfw"
   File "${PACKAGE_DIR}\${FIRMWARE_DIR}\fw_sparky2-${PACKAGE_LBL}.tlfw"
-  File "${PACKAGE_DIR}\${FIRMWARE_DIR}\fw_revolution-${PACKAGE_LBL}.tlfw"
   File "${PACKAGE_DIR}\${FIRMWARE_DIR}\fw_revomini-${PACKAGE_LBL}.tlfw"
 SectionEnd
 
