@@ -70,6 +70,7 @@
 #include <coreplugin/icore.h>
 #include <coreplugin/threadmanager.h>
 #include <math.h>
+#include <cmath>
 
 using std::isnan;
 using std::isinf;
