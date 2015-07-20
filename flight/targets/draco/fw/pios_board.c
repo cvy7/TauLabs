@@ -376,7 +376,7 @@ void PIOS_Board_Init(void) {
 		PIOS_DEBUG_Assert(0);
 	}
 	if (PIOS_I2C_CheckClear(pios_i2c_external_adapter_id) != 0)
-		panic(5);
+		AlarmsSet(SYSTEMALARMS_ALARM_I2C, SYSTEMALARMS_ALARM_CRITICAL);
 #endif
 
 #if defined(PIOS_INCLUDE_SPI)
@@ -991,7 +991,7 @@ void PIOS_Board_Init(void) {
 	HwDracoMagnetometerGet(&hw_magnetometer);
 #if defined(PIOS_INCLUDE_I2C)
 	if (PIOS_I2C_CheckClear(pios_i2c_external_adapter_id) != 0)
-		panic(5);
+		AlarmsSet(SYSTEMALARMS_ALARM_I2C, SYSTEMALARMS_ALARM_CRITICAL);
 #if defined(PIOS_INCLUDE_HMC5983_I2C)
 	{
 		if (hw_magnetometer == HWDRACO_MAGNETOMETER_EXTERNALI2C_HMC5983) {
