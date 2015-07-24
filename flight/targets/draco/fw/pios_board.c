@@ -77,7 +77,7 @@ static const struct pios_hmc5983_cfg pios_hmc5983_external_cfg = {
 #if defined(PIOS_INCLUDE_MS5611_SPI)
 #include "pios_ms5611_priv.h"
 static const struct pios_ms5611_cfg pios_ms5611_cfg = {
-	.oversampling = MS5611_OSR_1024,
+	.oversampling = MS5611_OSR_4096,
 	.temperature_interleaving = 1,
 };
 #endif /* PIOS_INCLUDE_MS5611 */
