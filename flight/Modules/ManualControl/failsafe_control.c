@@ -90,11 +90,13 @@ static bool check_rth_preconditions_met()
 		return false;
 
 	// attitude filter must be set to complementary or INSOutdoor and navigation filter must be INS
+#ifndef SMALLF1
 	StateEstimationData stateEstimation;
 	StateEstimationGet(&stateEstimation);
 	if (stateEstimation.AttitudeFilter == STATEESTIMATION_ATTITUDEFILTER_INSINDOOR ||
 	               stateEstimation.NavigationFilter != STATEESTIMATION_NAVIGATIONFILTER_INS)
 		return false;
+#endif
 
 	return true;
 }
