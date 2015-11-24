@@ -1,12 +1,16 @@
 /**
  ******************************************************************************
- *
- * @file       main.cpp
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013
- * @addtogroup Tools
+ * @addtogroup PIOS PIOS Core hardware abstraction layer
  * @{
- * @brief A Makefile GUI tool
- *****************************************************************************/
+ * @addtogroup PIOS_RESET Reset functions
+ * @brief Hardware functions to deal with the reset register
+ * @{
+ *
+ * @file       pios_reset.c
+ * @author     Tau Labs, Copyright (C) 2015.
+ * @brief      Reset information
+ *
+ ******************************************************************************/
 /*
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,14 +27,25 @@
  * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 
-#include <QApplication>
-#include "mainwindow.h"
 
-int main(int argc, char *argv[])
+/* Project Includes */
+#include "pios.h"
+
+#include "pios_reset.h"
+
+/**
+ * @brief PIOS_RESET_Clear Does nothing on POSIX systems
+ */
+void PIOS_RESET_Clear()
 {
-    QApplication a(argc, argv);
-    MainWindow w;
-    w.show();
-    
-    return a.exec();
+	// This space intentionally left blank
+}
+
+/**
+ * @brief PIOS_RESET_GetResetReason Does nothing on POSIX systems
+ * @return Always return Undefined
+ */
+int16_t PIOS_RESET_GetResetReason (void)
+{
+	return PIOS_RESET_FLAG_SOFTWARE;
 }

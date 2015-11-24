@@ -381,7 +381,7 @@ android_sdk_clean:
 .PHONY: android_sdk_update
 android_sdk_update:
 	$(V0) @echo " UPDATE       $(ANDROID_SDK_DIR)"
-	$(ANDROID_SDK_DIR)/tools/android update sdk --no-ui --all -t platform-tools,build-tools-20.0.0,android-14,addon-google_apis-google-14
+	$(ANDROID_SDK_DIR)/tools/android update sdk --no-ui --all -t platform-tools,build-tools-20.0.0,android-19,addon-google_apis-google-19
 
 # Set up Google Test (gtest) tools
 GTEST_DIR       := $(TOOLS_DIR)/gtest-1.7.0
@@ -405,34 +405,6 @@ gtest_install: gtest_clean
 gtest_clean:
 	$(V0) @echo " CLEAN        $(GTEST_DIR)"
 	$(V1) [ ! -d "$(GTEST_DIR)" ] || $(RM) -rf "$(GTEST_DIR)"
-
-.PHONY: gui_install
-MAKE_GUI_DIR := $(TOOLS_DIR)/make_gui/
-MAKE_GUI_SOURCE_DIR := $(ROOT_DIR)/shared/make_gui
-gui_install:
-	$(V1) mkdir -p "$(MAKE_GUI_DIR)/build"
-	$(V1) ( cd "$(MAKE_GUI_DIR)/build" && \
-	  $(QMAKE) $(MAKE_GUI_SOURCE_DIR)/make_gui.pro -spec $(QT_SPEC) && \
-	  $(MAKE) -w ; \
-	)
-	$(V1) [ ! -d "$(MAKE_GUI_DIR)/build" ] || $(RM) -rf "$(MAKE_GUI_DIR)/build"
-
-.PHONY: gui_clean
-gui_clean:
-	$(V0) @echo " CLEAN        $(MAKE_GUI_DIR)"
-	$(V1) [ ! -d "$(MAKE_GUI_DIR)" ] || $(RM) -rf "$(MAKE_GUI_DIR)"
-
-.PHONY: gui
-gui:
-ifeq ($(shell [ -d "$(MAKE_GUI_DIR)" ] && echo "exists"), exists)
-ifeq ($(UNAME), Darwin)
-	$(MAKE_GUI_DIR)gui.app/Contents/MacOS/gui
-else
-	$(MAKE_GUI_DIR)gui
-endif
-else
-	 @echo "make gui not installed, run make gui_install"
-endif
 
 
 # Set up astyle tools
@@ -565,15 +537,14 @@ endif
 
 # OPENSSL download URL
 ifdef WINDOWS
-  openssl_install: OPENSSL_URL  := http://slproweb.com/download/Win32OpenSSL-1_0_2c.exe
+  openssl_install: OPENSSL_URL  := https://slproweb.com/download/Win32OpenSSL-1_0_2d.exe
 
 openssl_install: OPENSSL_FILE := $(notdir $(OPENSSL_URL))
 OPENSSL_DIR = $(TOOLS_DIR)/win32openssl
 # order-only prereq on directory existance:
 openssl_install : | $(DL_DIR) $(TOOLS_DIR)
 openssl_install: openssl_clean
-        # download the instalatopn file only if it's newer than what we already have
-	$(V1) wget -N -P "$(DL_DIR)" "$(OPENSSL_URL)"
+	$(V1) curl -L -k -o "$(DL_DIR)/$(OPENSSL_FILE)" "$(OPENSSL_URL)"
 	$(V1) ./downloads/$(OPENSSL_FILE) /DIR=$(OPENSSL_DIR) /silent
 else
 openssl_install:
