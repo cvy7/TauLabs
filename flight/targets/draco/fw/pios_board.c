@@ -262,8 +262,9 @@ void PIOS_Board_Init(void) {
 	EventDispatcherInitialize();
 	UAVObjInitialize();
 
-	/* Initialize the alarms library */
+	/* Initialize the alarms library. Reads RCC reset flags*/
 	AlarmsInitialize();
+	PIOS_RESET_Clear();
 
 	HwDracoInitialize();
 	ModuleSettingsInitialize();
