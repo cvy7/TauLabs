@@ -361,8 +361,8 @@ void PIOS_Board_Init(void) {
 #endif	/* PIOS_INCLUDE_USB */
 
 	/* Configure the IO ports */
-	uint8_t hw_DSMxBind;
-	HwDracoDSMxBindGet(&hw_DSMxBind);
+	uint8_t hw_DSMxMode;
+	HwDracoDSMxModeGet(&hw_DSMxMode);
 
 	/* init sensor queue registration */
 	PIOS_SENSORS_Init();
@@ -386,7 +386,7 @@ void PIOS_Board_Init(void) {
 			PIOS_LED_ALARM,						/* led_id */
 			&pios_uart_xbee_dsm_hsum_cfg,		/* usart_dsm_hsum_cfg */
 			&pios_uart_xbee_dsm_aux_cfg,		/* dsm_cfg */
-			hw_DSMxBind,						/* dsm_bin pulse count */
+			hw_DSMxMode,						/* dsm_bin pulse count */
 			NULL,								/* *sbus_rcvr_usart_cfg */
 			NULL,								/* *pios_sbus_cfg */
 			false);								/* sbus_toggle */
@@ -403,7 +403,7 @@ void PIOS_Board_Init(void) {
 			PIOS_LED_ALARM,						/* led_id */
 			&pios_uart_gps_dsm_hsum_cfg,		/* usart_dsm_hsum_cfg */
 			&pios_uart_gps_dsm_aux_cfg,			/* dsm_cfg */
-			hw_DSMxBind,						/* dsm_bin pulse count */
+			hw_DSMxMode,						/* dsm_bin pulse count */
 			NULL,								/* *sbus_rcvr_usart_cfg */
 			NULL,								/* *pios_sbus_cfg */
 			false);								/* sbus_toggle */
@@ -437,7 +437,7 @@ void PIOS_Board_Init(void) {
 			PIOS_LED_ALARM,						/* led_id */
 			&pios_uart_extension_dsm_hsum_cfg,	/* usart_dsm_hsum_cfg */
 			&pios_uart_extension_dsm_aux_cfg,	/* dsm_cfg */
-			hw_DSMxBind,						/* dsm_bin pulse count */
+			hw_DSMxMode,						/* dsm_bin pulse count */
 			NULL,								/* *sbus_rcvr_usart_cfg */
 			NULL,								/* *pios_sbus_cfg */
 			false);								/* sbus_toggle */
