@@ -436,10 +436,10 @@ void PIOS_Board_Init(void) {
 	HwSparky2MainPortGet(&hw_mainport);
 
 	PIOS_HAL_ConfigurePort(hw_mainport, &pios_usart_main_cfg,
-			&pios_usart_com_driver, NULL, NULL, NULL,
+			&pios_usart_com_driver, NULL, NULL, NULL, NULL,
 			PIOS_LED_ALARM,
 			&pios_usart_dsm_hsum_main_cfg, &pios_dsm_main_cfg,
-			hw_DSMxMode, NULL, NULL, false);
+			hw_DSMxMode, NULL, NULL, false, 0);
 
 	/* Configure FlexiPort */
 	uint8_t hw_flexiport;
@@ -448,10 +448,10 @@ void PIOS_Board_Init(void) {
 	PIOS_HAL_ConfigurePort(hw_flexiport, &pios_usart_flexi_cfg,
 			&pios_usart_com_driver,
 			&pios_i2c_flexiport_adapter_id,
-			&pios_i2c_flexiport_adapter_cfg, NULL,
+			&pios_i2c_flexiport_adapter_cfg, NULL, NULL,
 			PIOS_LED_ALARM,
 			&pios_usart_dsm_hsum_flexi_cfg, &pios_dsm_flexi_cfg,
-			hw_DSMxMode, NULL, NULL, false);
+			hw_DSMxMode, NULL, NULL, false, 0);
 
 #if defined(PIOS_INCLUDE_RFM22B)
 	HwSparky2Data hwSparky2;
@@ -482,12 +482,13 @@ void PIOS_Board_Init(void) {
 			NULL, /* XXX TODO: fix as part of DSM refactor */
 			&pios_usart_com_driver,
 			NULL, NULL,
-			&pios_ppm_cfg, 
+			&pios_ppm_cfg,
+			NULL,
 			PIOS_LED_ALARM,
 			&pios_usart_dsm_hsum_rcvr_cfg,
 			&pios_dsm_rcvr_cfg,
 			hw_DSMxMode, get_sbus_rcvr_cfg(bdinfo->board_rev),
-			&pios_sbus_cfg, get_sbus_toggle(bdinfo->board_rev));
+			&pios_sbus_cfg, get_sbus_toggle(bdinfo->board_rev), 0);
 
 #if defined(PIOS_INCLUDE_GCSRCVR)
 	GCSReceiverInitialize();
