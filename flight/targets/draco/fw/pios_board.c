@@ -384,13 +384,15 @@ void PIOS_Board_Init(void) {
 			NULL,								/* *i2c_id */
 			NULL,								/* *i2c_cfg */
 			NULL,								/* *pios_ppm_cfg */
+			NULL,
 			PIOS_LED_ALARM,						/* led_id */
 			&pios_uart_xbee_dsm_hsum_cfg,		/* usart_dsm_hsum_cfg */
 			&pios_uart_xbee_dsm_aux_cfg,		/* dsm_cfg */
 			hw_DSMxMode,						/* dsm_bin pulse count */
 			NULL,								/* *sbus_rcvr_usart_cfg */
 			NULL,								/* *pios_sbus_cfg */
-			false);								/* sbus_toggle */
+			false,								/* sbus_toggle */
+			0);
 
 	/* UART GPS Port */
 	uint8_t hw_uart_gps;
@@ -401,13 +403,15 @@ void PIOS_Board_Init(void) {
 			NULL,								/* *i2c_id */
 			NULL,								/* *i2c_cfg */
 			NULL,								/* *pios_ppm_cfg */
+			NULL,
 			PIOS_LED_ALARM,						/* led_id */
 			&pios_uart_gps_dsm_hsum_cfg,		/* usart_dsm_hsum_cfg */
 			&pios_uart_gps_dsm_aux_cfg,			/* dsm_cfg */
 			hw_DSMxMode,						/* dsm_bin pulse count */
 			NULL,								/* *sbus_rcvr_usart_cfg */
 			NULL,								/* *pios_sbus_cfg */
-			false);								/* sbus_toggle */
+			false,								/* sbus_toggle */
+			0);
 
 	/* UART onewire half-duplex line */
 	uint8_t hw_uart_onewire;
@@ -418,13 +422,15 @@ void PIOS_Board_Init(void) {
 			NULL,								/* *i2c_id */
 			NULL,								/* *i2c_cfg */
 			NULL,								/* *pios_ppm_cfg */
+			NULL,
 			PIOS_LED_ALARM,						/* led_id */
 			NULL,								/* usart_dsm_hsum_cfg */
 			NULL,								/* dsm_cfg */
 			0,									/* dsm_bin pulse count */
 			NULL,								/* *sbus_rcvr_usart_cfg */
 			NULL,								/* *pios_sbus_cfg */
-			false);								/* sbus_toggle */
+			false,								/* sbus_toggle */
+			0);
 
 	/* UART Extension Port */
 	uint8_t hw_uart_extension;
@@ -435,13 +441,15 @@ void PIOS_Board_Init(void) {
 			NULL,								/* *i2c_id */
 			NULL,								/* *i2c_cfg */
 			NULL,								/* *pios_ppm_cfg */
+			NULL,
 			PIOS_LED_ALARM,						/* led_id */
 			&pios_uart_extension_dsm_hsum_cfg,	/* usart_dsm_hsum_cfg */
 			&pios_uart_extension_dsm_aux_cfg,	/* dsm_cfg */
 			hw_DSMxMode,						/* dsm_bin pulse count */
 			NULL,								/* *sbus_rcvr_usart_cfg */
 			NULL,								/* *pios_sbus_cfg */
-			false);								/* sbus_toggle */
+			false,								/* sbus_toggle */
+			0);
 
 	/* Configure PWM inputs & outputs */
 	uint8_t hw_outputport;
@@ -487,13 +495,15 @@ void PIOS_Board_Init(void) {
 			NULL,								/* *i2c_id */
 			NULL,								/* *i2c_cfg */
 			&pios_ppm_cfg,						/* *pios_ppm_cfg */
+			NULL,
 			PIOS_LED_ALARM,						/* led_id */
 			NULL,								/* usart_dsm_hsum_cfg */
 			NULL,								/* dsm_cfg */
 			0,									/* dsm_bin pulse count */
 			&pios_uart_rcvr_sbus_cfg,			/* *sbus_rcvr_usart_cfg */
 			&pios_uart_rcvr_sbus_aux_cfg,		/* *pios_sbus_cfg */
-			false);								/* sbus_toggle */
+			false,								/* sbus_toggle */
+			0);
 
 #if defined(PIOS_INCLUDE_GCSRCVR)
 	GCSReceiverInitialize();
