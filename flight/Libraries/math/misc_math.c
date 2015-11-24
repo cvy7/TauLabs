@@ -189,11 +189,11 @@ float vector3_distances(const float *actual,
 void vector2_clip(float *vels, float limit)
 {
 	float mag = vectorn_magnitude(vels, 2);    // only horiz component
-	float scale = mag / limit;
 
-	if (scale > 1) {
-		vels[0] /= mag;
-		vels[1] /= mag;
+	if (mag > limit && mag != 0) {
+		float scale = limit / mag;
+		vels[0] *= scale;
+		vels[1] *= scale;
 	}
 }
 
@@ -255,17 +255,43 @@ void cubic_deadband_setup(float w, float b, float *m, float *r)
 	*r = *m * powf(w, 3) + b * w;
 }
 
-
-/* NOTE: Interesting problem regarding NaN and Inf checks. The compile optimization --fast-math
- * does many useful things, but it also removes the ability to check if a number is a Nan, even
- * if the check is the classic `x == x`. Thus we need to add this back in, and we do it as a
- * function which has the optimizations turned off.
+/**
+ * Perform a linear interpolation over N points
  *
- * Souce: http://stackoverflow.com/questions/22931147/stdisinf-does-not-work-with-ffast-math-how-to-check-for-infinity
+ * output range is defined by the curve vector
+ * curve is defined in N intervals connecting N+1 points
+ *
+ * @param[in] input the input value, in [input_min,input_max]
+ * @param[in] curve the array of points in the curve
+ * @param[in] num_points the number of points in the curve
+ * @param[in] input_min the lower range of the input values
+ * @param[in] input_max the upper range of the input values
+ * @return the output value, in [0,1]
  */
-bool IS_NOT_FINITE(float x) {
-	return (!isfinite(x));
+float linear_interpolate(float const input, float const * curve, uint8_t num_points, const float input_min, const float input_max)
+{
+	// shift our input [min,max] into the typical range [0,1]
+	float scale = fmaxf( (input - input_min) / (input_max - input_min), 0.0f) * (float) (num_points - 1);
+	// select a starting bin via truncation
+	int idx1 = scale;
+	// save the offset from the starting bin for linear interpolation
+	scale -= (float)idx1;
+	// select an ending bin (linear interpolation occurs between starting and ending bins)
+	int idx2 = idx1 + 1;
+	// if the ending bin bin is above the last bin
+	if (idx2 >= num_points) {
+		//clamp to highest entry in table
+		idx2 = num_points -1;
+		// if the starting bin is above the last bin
+		if (idx1 >= num_points) {
+			// we no longer do interpolation; instead, we just select the max point on the curve
+			return curve[num_points-1];
+		}
+	}
+	return curve[idx1] * (1.0f - scale) + curve[idx2] * scale;
 }
+
+
 
 /**
  * @}

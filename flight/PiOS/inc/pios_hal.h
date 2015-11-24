@@ -11,8 +11,11 @@
 #include <pios_i2c_priv.h>
 #include <pios_usb_cdc_priv.h>
 #include <pios_usb_hid_priv.h>
+
+#if defined(PIOS_INCLUDE_RFM22B)
 #include <pios_rfm22b_priv.h>
 #include <pios_openlrs_priv.h>
+#endif /* PIOS_INCLUDE_RFM22B */
 
 /* One slot per selectable receiver group.
  *  eg. PWM, PPM, GCS, SPEKTRUM1, SPEKTRUM2, SBUS
@@ -48,7 +51,7 @@ void PIOS_HAL_ConfigurePort(HwSharedPortTypesOptions port_type,
 		/* TODO: future work to factor most of these away */
 		const struct pios_usart_cfg *usart_dsm_hsum_cfg,
 		const struct pios_dsm_cfg *dsm_cfg,
-		int dsm_bind,
+		HwSharedDSMxModeOptions dsm_mode,
 		const struct pios_usart_cfg *sbus_rcvr_cfg,
 		const struct pios_sbus_cfg *sbus_cfg,
 		bool sbus_toggle
@@ -62,6 +65,7 @@ void PIOS_HAL_ConfigureHID(HwSharedUSB_HIDPortOptions port_type,
 		uintptr_t usb_id,
 		const struct pios_usb_hid_cfg *hid_cfg);
 
+#if defined(PIOS_INCLUDE_RFM22B)
 void PIOS_HAL_ConfigureRFM22B(HwSharedRadioPortOptions radio_type,
                 uint8_t board_type, uint8_t board_rev,
                 HwSharedMaxRfPowerOptions max_power,
@@ -70,5 +74,6 @@ void PIOS_HAL_ConfigureRFM22B(HwSharedRadioPortOptions radio_type,
                 const struct pios_rfm22b_cfg *rfm22b_cfg,
                 uint8_t min_chan, uint8_t max_chan, uint32_t coord_id,
 		int status_inst);
+#endif /* PIOS_INCLUDE_RFM22B */
 
 #endif
