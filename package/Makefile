@@ -44,6 +44,8 @@ CLEAN_GROUND := YES
 CLEAN_FLIGHT := YES
 endif
 
+USE_MSVC ?= NO
+
 # Set up targets
 ALL_BOARDS        := coptercontrol pipxtreme revomini sparky sparky2 sparkybgc quanton colibri flyingf3 flyingf4 aq32 naze32
 ALL_BOARDS_BU     := coptercontrol pipxtreme
@@ -77,8 +79,7 @@ help:
 	@echo "       This usually is safe."
 	@echo
 
-# Clean and build uavobjects since all parts depend on them
-uavobjects: all_clean
+uavobjects: 
 	$(V1) $(MAKE) -C $(ROOT_DIR) $@
 
 matlab: uavobjects
