@@ -26,6 +26,7 @@
 				<option>FrSKY Sensor Hub</option>
 				<option>LighttelemetryTx</option>
 				<option>PicoC</option>
+				<option>OpenLog</option>
 			</options>
 		</field>
 
@@ -45,6 +46,7 @@
 				<option>FrSKY Sensor Hub</option>
 				<option>LighttelemetryTx</option>
 				<option>PicoC</option>
+				<option>OpenLog</option>
 			</options>
 		</field>
 
@@ -65,6 +67,7 @@
 				<option>FrSKY Sensor Hub</option>
 				<option>LighttelemetryTx</option>
 				<option>PicoC</option>
+				<option>OpenLog</option>
 			</options>
 		</field>
 
