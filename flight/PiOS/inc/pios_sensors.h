@@ -92,17 +92,14 @@ enum pios_sensor_type
 	PIOS_SENSOR_LAST
 };
 
-//! Structure to register the data
-struct pios_sensor_registration {
-	enum pios_sensor_type type;
-	struct pios_queue *queue;
-};
-
 //! Initialize the PIOS_SENSORS interface
 int32_t PIOS_SENSORS_Init();
 
 //! Register a sensor with the PIOS_SENSORS interface
 int32_t PIOS_SENSORS_Register(enum pios_sensor_type type, struct pios_queue *queue);
+
+//! Checks if a sensor type is registered with the PIOS_SENSORS interface
+bool PIOS_SENSORS_IsRegistered(enum pios_sensor_type type);
 
 //! Get the data queue for a sensor type
 struct pios_queue *PIOS_SENSORS_GetQueue(enum pios_sensor_type type);
