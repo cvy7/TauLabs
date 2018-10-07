@@ -8,7 +8,7 @@
  *
  * @file       pios_usart.c   
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2012.
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2013
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2014
  * @brief      USART commands. Inits USARTs, controls USARTs & Interupt handlers. (STM32 dependent)
  * @see        The GNU Public License (GPL) Version 3
  *
@@ -37,6 +37,10 @@
 #include "pios.h"
 
 #if defined(PIOS_INCLUDE_USART)
+
+#if defined(PIOS_INCLUDE_FREERTOS)
+#include "FreeRTOS.h"
+#endif /* defined(PIOS_INCLUDE_FREERTOS) */
 
 #include <pios_usart_priv.h>
 
@@ -103,35 +107,75 @@ static uintptr_t PIOS_USART_1_id;
 void USART1_EXTI25_IRQHandler(void) __attribute__ ((alias ("PIOS_USART_1_irq_handler")));
 static void PIOS_USART_1_irq_handler (void)
 {
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_PROLOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
+
 	PIOS_USART_generic_irq_handler (PIOS_USART_1_id);
+
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_EPILOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
 }
 
 static uintptr_t PIOS_USART_2_id;
 void USART2_EXTI26_IRQHandler(void) __attribute__ ((alias ("PIOS_USART_2_irq_handler")));
 static void PIOS_USART_2_irq_handler (void)
 {
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_PROLOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
+
 	PIOS_USART_generic_irq_handler (PIOS_USART_2_id);
+
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_EPILOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
 }
 
 static uintptr_t PIOS_USART_3_id;
 void USART3_EXTI28_IRQHandler(void) __attribute__ ((alias ("PIOS_USART_3_irq_handler")));
 static void PIOS_USART_3_irq_handler (void)
 {
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_PROLOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
+
 	PIOS_USART_generic_irq_handler (PIOS_USART_3_id);
+
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_EPILOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
 }
 
 static uintptr_t PIOS_UART_4_id;
 void UART4_EXTI34_IRQHandler(void) __attribute__ ((alias ("PIOS_UART_4_irq_handler")));
 static void PIOS_UART_4_irq_handler (void)
 {
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_PROLOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
+
 	PIOS_USART_generic_irq_handler (PIOS_UART_4_id);
+
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_EPILOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
 }
 
 static uintptr_t PIOS_UART_5_id;
 void UART5_EXTI35_IRQHandler(void) __attribute__ ((alias ("PIOS_UART_5_irq_handler")));
 static void PIOS_UART_5_irq_handler (void)
 {
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_PROLOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
+
 	PIOS_USART_generic_irq_handler (PIOS_UART_5_id);
+
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_EPILOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
 }
 
 /**
@@ -183,6 +227,11 @@ int32_t PIOS_USART_Init(uintptr_t * usart_id, const struct pios_usart_cfg * cfg)
 		USART_SWAPPinCmd(usart_dev->cfg->regs, ENABLE);
 	else
 		USART_SWAPPinCmd(usart_dev->cfg->regs, DISABLE);
+
+	if (usart_dev->cfg->single_wire == true)
+		USART_HalfDuplexCmd(usart_dev->cfg->regs, ENABLE);
+	else
+		USART_HalfDuplexCmd(usart_dev->cfg->regs, DISABLE);
 
 	/* Configure the USART */
 	USART_Init(usart_dev->cfg->regs, (USART_InitTypeDef *)&usart_dev->cfg->init);
@@ -348,8 +397,8 @@ static void PIOS_USART_generic_irq_handler(uintptr_t usart_id)
 	}
 	
 #if defined(PIOS_INCLUDE_FREERTOS)
-	portEND_SWITCHING_ISR(rx_need_yield || tx_need_yield);
-#endif	/* PIOS_INCLUDE_FREERTOS */
+	portEND_SWITCHING_ISR((rx_need_yield || tx_need_yield) ? pdTRUE : pdFALSE);
+#endif	/* defined(PIOS_INCLUDE_FREERTOS) */
 }
 
 #endif

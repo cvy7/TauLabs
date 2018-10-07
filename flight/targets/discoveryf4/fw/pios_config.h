@@ -31,7 +31,6 @@
 #define PIOS_CONFIG_H
 
 /* Major features */
-#define PIOS_INCLUDE_FREERTOS
 #define PIOS_INCLUDE_BL_HELPER
 
 /* Enable/Disable PiOS Modules */
@@ -48,7 +47,7 @@
 /* Supported receiver interfaces */
 //#define PIOS_INCLUDE_DSM
 //#define PIOS_INCLUDE_SBUS
-//#define PIOS_INCLUDE_PPM
+#define PIOS_INCLUDE_PPM
 //#define PIOS_INCLUDE_PWM
 #define PIOS_INCLUDE_GCSRCVR
 
@@ -78,9 +77,6 @@
 #define PIOS_INCLUDE_FLASH_INTERNAL
 #define PIOS_INCLUDE_LOGFS_SETTINGS
 
-/* Other Interfaces */
-//#define PIOS_INCLUDE_I2C_ESC
-
 /* Flags that alter behaviors - mostly to lower resources for CC */
 #define PIOS_INCLUDE_INITCALL           /* Include init call structures */
 #define PIOS_TELEM_PRIORITY_QUEUE       /* Enable a priority queue in telemetry */
@@ -106,8 +102,9 @@
  */
 #define IDLE_COUNTS_PER_SEC_AT_NO_LOAD (6984538)
 
-//This enables altitude hold in manualcontrol module
-//#define REVOLUTION
+#define PIOS_NO_ALARMS
+
+#define NO_SENSORS
 
 #endif /* PIOS_CONFIG_H */
 /**

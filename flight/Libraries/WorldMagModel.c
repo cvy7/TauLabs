@@ -8,7 +8,7 @@
  * @brief      Source file for the World Magnetic Model
  *             This is a port of code available from the US NOAA.
  *
- *             The hard coded coefficients should be valid until 2015.
+ *             The hard coded coefficients should be valid until 2020.
  *
  *             Updated coeffs from ..
  *             http://www.ngdc.noaa.gov/geomag/WMM/wmm_ddownload.shtml
@@ -90,7 +90,7 @@ int WMM_Initialize()
 	MagneticModel.SecularVariationUsed = 0;
 	MagneticModel.epoch       = MAGNETIC_MODEL_EPOCH;
 
-	// Must be updated periodically. Last update expires in 2015
+	// Must be updated periodically. Last update expires in 2020
 
 	return 0;                       // OK
 }
@@ -328,7 +328,7 @@ int WMM_AssociatedLegendreFunction(WMMtype_CoordSpherical * CoordSpherical, uint
 {
 	float sin_phi = sinf(CoordSpherical->phig * DEG2RAD);	/* sin  (geocentric latitude) */
 
-	if (nMax <= 16 || (1 - fabs(sin_phi)) < 1.0e-10)	/* If nMax is less tha 16 or at the poles */
+	if (nMax <= 16 || (1 - fabsf(sin_phi)) < 1.0e-10f)	/* If nMax is less tha 16 or at the poles */
 	{
 		if (WMM_PcupLow(LegendreFunction->Pcup, LegendreFunction->dPcup, sin_phi, nMax) < 0)
 		    return -1;  // error
@@ -414,7 +414,7 @@ int WMM_Summation(WMMtype_LegendreFunction * LegendreFunction,
 	}
 
 	cos_phi = cosf(CoordSpherical->phig * DEG2RAD);
-	if (fabs(cos_phi) > 1.0e-10)
+	if (fabsf(cos_phi) > 1.0e-10f)
 	{
 		MagneticResults->By = MagneticResults->By / cos_phi;
 	}
@@ -494,7 +494,7 @@ int WMM_SecVarSummation(WMMtype_LegendreFunction * LegendreFunction,
 		}
 	}
 	cos_phi = cosf(CoordSpherical->phig * DEG2RAD);
-	if (fabs(cos_phi) > 1.0e-10)
+	if (fabsf(cos_phi) > 1.0e-10f)
 	{
 		MagneticResults->By = MagneticResults->By / cos_phi;
 	}
@@ -671,7 +671,7 @@ int WMM_PcupHigh(float *Pcup, float *dPcup, float x, uint16_t nMax)
 	float       *PreSqr = pre_sqr;
   
 
-	if (fabs(x) == 1.0)
+	if (fabsf(x) == 1.0f)
 	{
 		// Error in PcupHigh: derivative cannot be calculated at poles
 		return -2;
@@ -1114,7 +1114,7 @@ int WMM_DateToYear(uint16_t month, uint16_t day, uint16_t year)
 		temp += MonthDays[i - 1];
 	temp += day;
 	
-	decimal_date = year + (temp - 1) / (365.0 + ExtraDay);
+	decimal_date = year + (temp - 1) / (365.0f + ExtraDay);
 
 	return 0;   // OK
 }

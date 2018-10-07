@@ -32,9 +32,10 @@
 // lower driver (??)
 
 #include "pios_sensors.h"
+#include <stddef.h>
 
 //! The list of queue handles
-static xQueueHandle queues[PIOS_SENSOR_LAST];
+static struct pios_queue *queues[PIOS_SENSOR_LAST];
 static int32_t max_gyro_rate;
 
 //! Initialize the sensors interface
@@ -47,7 +48,7 @@ int32_t PIOS_SENSORS_Init()
 }
 
 //! Register a sensor with the PIOS_SENSORS interface
-int32_t PIOS_SENSORS_Register(enum pios_sensor_type type, xQueueHandle queue)
+int32_t PIOS_SENSORS_Register(enum pios_sensor_type type, struct pios_queue *queue)
 {
 	if(queues[type] != NULL)
 		return -1;
@@ -57,8 +58,20 @@ int32_t PIOS_SENSORS_Register(enum pios_sensor_type type, xQueueHandle queue)
 	return 0;
 }
 
+//! Checks if a sensor type is registered with the PIOS_SENSORS interface
+bool PIOS_SENSORS_IsRegistered(enum pios_sensor_type type)
+{
+	if(type >= PIOS_SENSOR_LAST)
+		return false;
+
+	if(queues[type] != NULL)
+		return true;
+
+	return false;
+}
+
 //! Get the data queue for a sensor type
-xQueueHandle PIOS_SENSORS_GetQueue(enum pios_sensor_type type)
+struct pios_queue *PIOS_SENSORS_GetQueue(enum pios_sensor_type type)
 {
 	if (type >= PIOS_SENSOR_LAST)
 		return NULL;

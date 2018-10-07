@@ -1,22 +1,59 @@
 #include "usbsignalfilter.h"
 #include <QDebug>
+
+//#define USB_FILTER_DEBUG
+#ifdef USB_FILTER_DEBUG
+#define USB_FILTER_QXTLOG_DEBUG(...) qDebug()<<__VA_ARGS__
+#else  // USB_FILTER_DEBUG
+#define USB_FILTER_QXTLOG_DEBUG(...)
+#endif	// USB_FILTER_DEBUG
+
 void USBSignalFilter::m_deviceDiscovered(USBPortInfo port)
 {
-    if((port.vendorID==m_vid || m_vid==-1) && (port.productID==m_pid || m_pid==-1) && ((port.bcdDevice>>8)==m_boardModel || m_boardModel==-1) &&
+    availableDevices = USBMonitor::instance()->availableDevices();
+    if((m_vid.contains(port.vendorID) || m_vid.isEmpty()) && (port.productID==m_pid || m_pid==-1) && ((port.bcdDevice>>8)==m_boardModel || m_boardModel==-1) &&
             ( (port.bcdDevice&0x00ff) ==m_runState || m_runState==-1))
     {
-        qDebug()<<"USBSignalFilter emit device discovered";
+        USB_FILTER_QXTLOG_DEBUG("USBSignalFilter emit device discovered");
         emit deviceDiscovered();
     }
 }
 
+void USBSignalFilter::m_deviceRemoved(USBPortInfo port)
+{
+    foreach (USBPortInfo knownPort, availableDevices) {
+        if(!USBMonitor::instance()->availableDevices().contains(knownPort))
+        {
+            port = knownPort;
+            if((m_vid.contains(port.vendorID) || m_vid.isEmpty()) && (port.productID==m_pid || m_pid==-1) && ((port.bcdDevice>>8)==m_boardModel || m_boardModel==-1) &&
+                    ( (port.bcdDevice&0x00ff) ==m_runState || m_runState==-1))
+            {
+                USB_FILTER_QXTLOG_DEBUG("USBSignalFilter emit device removed");
+                emit deviceRemoved();
+            }
+        }
+    }
+    availableDevices = USBMonitor::instance()->availableDevices();
+}
+
 USBSignalFilter::USBSignalFilter(int vid, int pid, int boardModel, int runState):
+    m_pid(pid),
+    m_boardModel(boardModel),
+    m_runState(runState)
+{
+    availableDevices = USBMonitor::instance()->availableDevices();
+    m_vid.append(vid);
+    connect(USBMonitor::instance(), SIGNAL(deviceDiscovered(USBPortInfo)), this, SLOT(m_deviceDiscovered(USBPortInfo)));
+    connect(USBMonitor::instance(), SIGNAL(deviceRemoved(USBPortInfo)), this, SLOT(m_deviceRemoved(USBPortInfo)));
+}
+
+USBSignalFilter::USBSignalFilter(QList<int> vid, int pid, int boardModel, int runState):
     m_vid(vid),
     m_pid(pid),
     m_boardModel(boardModel),
     m_runState(runState)
 {
-    connect(USBMonitor::instance(),SIGNAL(deviceDiscovered(USBPortInfo)),this,SLOT(m_deviceDiscovered(USBPortInfo)));
+    availableDevices = USBMonitor::instance()->availableDevices();
+    connect(USBMonitor::instance(), SIGNAL(deviceDiscovered(USBPortInfo)), this, SLOT(m_deviceDiscovered(USBPortInfo)));
+    connect(USBMonitor::instance(), SIGNAL(deviceRemoved(USBPortInfo)), this, SLOT(m_deviceRemoved(USBPortInfo)));
 }
-
-

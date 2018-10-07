@@ -6,7 +6,7 @@
  * @{ 
  *
  * @file	   UAVOLighttelemetryBridge.c
- * @author	   Tau Labs, http://taulabs.org, Copyright (C) 2013
+ * @author	   Tau Labs, http://taulabs.org, Copyright (C) 2013-2014
  * @brief	   Bridges selected UAVObjects to a minimal one way telemetry 
  *			   protocol for really low bitrates (1200/2400 bauds). This can be 
  *			   used with FSK audio modems or increase range for serial telemetry.
@@ -43,22 +43,25 @@
  * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 #include "openpilot.h"
-#include "modulesettings.h"
+
+#include "accels.h"
+#include "airspeedactual.h"
 #include "attitudeactual.h"
-#include "gpsposition.h"
 #include "baroaltitude.h"
+#include "flightstatus.h"
+#include "gpsposition.h"
 #include "flightbatterysettings.h"
 #include "flightbatterystate.h"
-#include "gpsposition.h"
-#include "airspeedactual.h"
-#include "accels.h"
 #include "manualcontrolcommand.h"
-#include "flightstatus.h"
+#include "modulesettings.h"
+#include "positionactual.h"
+
+#include "pios_thread.h"
 
 #if defined(PIOS_INCLUDE_LIGHTTELEMETRY)
 // Private constants
-#define STACK_SIZE_BYTES 512
-#define TASK_PRIORITY (tskIDLE_PRIORITY+1)
+#define STACK_SIZE_BYTES 600
+#define TASK_PRIORITY PIOS_THREAD_PRIO_LOW
 #define UPDATE_PERIOD 100
 
 #define LTM_GFRAME_SIZE 18
@@ -68,8 +71,8 @@
 // Private types
 
 // Private variables
-static xTaskHandle taskHandle;
-
+static bool module_enabled;
+static struct pios_thread *taskHandle;
 static uint32_t lighttelemetryPort;
 static uint8_t ltm_scheduler;
 static uint8_t ltm_slowrate;
@@ -83,35 +86,58 @@ static void send_LTM_Gframe();
 static void send_LTM_Aframe();
 static void send_LTM_Sframe();
 
-/**
- * Initialise the module, called on startup
- * \returns 0 on success or -1 if initialisation failed
- */
-int32_t uavoLighttelemetryBridgeStart()
-{
-	xTaskCreate(uavoLighttelemetryBridgeTask, (signed char *)"uavoLighttelemetryBridge", STACK_SIZE_BYTES/4, NULL, TASK_PRIORITY, &taskHandle);
-	TaskMonitorAdd(TASKINFO_RUNNING_UAVOLIGHTTELEMETRYBRIDGE, taskHandle);
-	return 0;
-}
 
 /**
- * Initialise the module, called on startup
+ * Initialise the module, called first on startup
  * \returns 0 on success or -1 if initialisation failed
  */
 int32_t uavoLighttelemetryBridgeInitialize()
 {
-	// Update telemetry settings
+#ifdef MODULE_UAVOLighttelemetryBridge_BUILTIN	
+	module_enabled = true;
+#else
+	uint8_t module_state[MODULESETTINGS_ADMINSTATE_NUMELEM]; 
+	ModuleSettingsAdminStateGet(module_state); 
+	module_enabled = module_state[MODULESETTINGS_ADMINSTATE_UAVOLIGHTTELEMETRYBRIDGE] == MODULESETTINGS_ADMINSTATE_ENABLED;
+#endif
+
 	lighttelemetryPort = PIOS_COM_LIGHTTELEMETRY;
-	ltm_scheduler = 1;
-	updateSettings();
-	uint8_t speed;
-	ModuleSettingsLightTelemetrySpeedGet(&speed);
-	if (speed == MODULESETTINGS_LIGHTTELEMETRYSPEED_1200)
-		ltm_slowrate = 1;
-	else 
-		ltm_slowrate = 0;
-	return 0;
+	module_enabled &= (lighttelemetryPort != 0);
+	
+	if (module_enabled)
+	{
+		// Update telemetry settings
+		ltm_scheduler = 1;
+		updateSettings();
+		uint8_t speed;
+		ModuleSettingsLightTelemetrySpeedGet(&speed);
+		if (speed == MODULESETTINGS_LIGHTTELEMETRYSPEED_1200)
+			ltm_slowrate = 1;
+		else 
+			ltm_slowrate = 0;
+
+		return 0;
+	}
+	
+	return -1;
 }
+
+/**
+ * Initialise the module, called on startup after Initialize
+ * \returns 0 on success or -1 if initialisation failed
+ */
+int32_t uavoLighttelemetryBridgeStart()
+{
+	if ( module_enabled )
+	{
+		taskHandle = PIOS_Thread_Create(uavoLighttelemetryBridgeTask, "uavoLighttelemetryBridge", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
+		TaskMonitorAdd(TASKINFO_RUNNING_UAVOLIGHTTELEMETRYBRIDGE, taskHandle);
+		return 0;
+	}
+	
+	return -1;
+}
+
 MODULE_INITCALL(uavoLighttelemetryBridgeInitialize, uavoLighttelemetryBridgeStart);
 
 
@@ -122,10 +148,10 @@ MODULE_INITCALL(uavoLighttelemetryBridgeInitialize, uavoLighttelemetryBridgeStar
 
 static void uavoLighttelemetryBridgeTask(void *parameters)
 {
-	portTickType lastSysTime;
+	uint32_t lastSysTime;
 
 	// Main task loop
-	lastSysTime = xTaskGetTickCount();
+	lastSysTime = PIOS_Thread_Systime();
 	while (1)
 	{
 
@@ -146,7 +172,7 @@ static void uavoLighttelemetryBridgeTask(void *parameters)
 		if (ltm_scheduler > 10)
 			ltm_scheduler = 1;
 		// Delay until it is time to read the next sample
-		vTaskDelayUntil(&lastSysTime, UPDATE_PERIOD / portTICK_RATE_MS);
+		PIOS_Thread_Sleep_Until(&lastSysTime, UPDATE_PERIOD);
 	}
 }
 
@@ -158,22 +184,25 @@ static void uavoLighttelemetryBridgeTask(void *parameters)
 static void send_LTM_Gframe() 
 {
 	GPSPositionData pdata;
-	BaroAltitudeData bdata;
-	GPSPositionInitialize();
-	BaroAltitudeInitialize();
-	 //prepare data
-	GPSPositionGet(&pdata);
+
+	if (GPSPositionHandle() != NULL)
+		GPSPositionGet(&pdata);
 
 	int32_t lt_latitude = pdata.Latitude;
 	int32_t lt_longitude = pdata.Longitude;
 	uint8_t lt_groundspeed = (uint8_t)roundf(pdata.Groundspeed); //rounded m/s .
 	int32_t lt_altitude = 0;
-	if (BaroAltitudeHandle() != NULL) {
-		BaroAltitudeGet(&bdata);
-		lt_altitude = (int32_t)roundf(bdata.Altitude * 100.0f); //Baro alt in cm.
-	}
-	else if (GPSPositionHandle() != NULL)
+	if (PositionActualHandle() != NULL) {
+		float altitude;
+		PositionActualDownGet(&altitude);
+		lt_altitude = (int32_t)roundf(altitude * -100.0f);
+	} else if (BaroAltitudeHandle() != NULL) {
+		float altitude;
+		BaroAltitudeAltitudeGet(&altitude);
+		lt_altitude = (int32_t)roundf(altitude * 100.0f); //Baro alt in cm.
+	} else if (GPSPositionHandle() != NULL) {
 		lt_altitude = (int32_t)roundf(pdata.Altitude * 100.0f); //GPS alt in cm.
+	}
 	
 	uint8_t lt_gpsfix;
 	switch (pdata.Status) {
@@ -278,7 +307,12 @@ static void send_LTM_Sframe()
 		AirspeedActualData adata;
 		AirspeedActualGet (&adata);
 		lt_airspeed = (uint8_t)roundf(adata.TrueAirspeed);	  //Airspeed in m/s
+	} else if (GPSPositionHandle() != NULL) {
+		float groundspeed;
+		GPSPositionGroundspeedGet(&groundspeed);
+		lt_airspeed = (uint8_t)roundf(groundspeed);
 	}
+
 	FlightStatusData fdata;
 	FlightStatusGet(&fdata);
 	lt_arm = fdata.Armed;									  //Armed status
@@ -344,7 +378,7 @@ static void send_LTM_Packet(uint8_t *LTPacket, uint8_t LTPacket_size)
 	}
 	LTPacket[LTPacket_size-1] = LTCrc;
 	if (lighttelemetryPort) {
-		PIOS_COM_SendBuffer(lighttelemetryPort, LTPacket, LTPacket_size);
+		PIOS_COM_SendBufferNonBlocking(lighttelemetryPort, LTPacket, LTPacket_size);
 	}
 }
 

@@ -7,7 +7,7 @@
  *
  * @file       autotune.c
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2012.
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013-2014
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013-2016
  * @brief      State machine to run autotuning. Low level work done by @ref
  *             StabilizationModule 
  *
@@ -37,26 +37,37 @@
 #include "modulesettings.h"
 #include "manualcontrolcommand.h"
 #include "manualcontrolsettings.h"
-#include "relaytuning.h"
-#include "relaytuningsettings.h"
+#include "gyros.h"
+#include "actuatordesired.h"
 #include "stabilizationdesired.h"
 #include "stabilizationsettings.h"
+#include "systemident.h"
+
+// The actually system ident code
+#include "rate_torque_si.h"
+
 #include <pios_board_info.h>
- 
+#include "pios_thread.h"
+
 // Private constants
-#define STACK_SIZE_BYTES 1200
-#define TASK_PRIORITY (tskIDLE_PRIORITY+2)
+#ifndef AUTOTUNE_STACK_SIZE
+#define STACK_SIZE_BYTES 1500
+#else
+#define STACK_SIZE_BYTES AUTOTUNE_STACK_SIZE
+#endif
+
+#define TASK_PRIORITY PIOS_THREAD_PRIO_NORMAL
 
 // Private types
-enum AUTOTUNE_STATE {AT_INIT, AT_START, AT_ROLL, AT_PITCH, AT_FINISHED, AT_SET};
+enum AUTOTUNE_STATE {AT_INIT, AT_START, AT_RUN, AT_FINISHED, AT_SET};
 
 // Private variables
-static xTaskHandle taskHandle;
+static struct pios_thread *taskHandle;
 static bool module_enabled;
+static uintptr_t rtsi_handle;
 
 // Private functions
 static void AutotuneTask(void *parameters);
-static void update_stabilization_settings();
 
 /**
  * Initialise the module, called on startup
@@ -77,8 +88,7 @@ int32_t AutotuneInitialize(void)
 #endif
 
 	if (module_enabled) {
-		RelayTuningSettingsInitialize();
-		RelayTuningInitialize();
+		SystemIdentInitialize();
 	}
 
 	return 0;
@@ -92,38 +102,106 @@ int32_t AutotuneStart(void)
 {
 	// Start main task if it is enabled
 	if(module_enabled) {
-		xTaskCreate(AutotuneTask, (signed char *)"Autotune", STACK_SIZE_BYTES/4, NULL, TASK_PRIORITY, &taskHandle);
+
+		rtsi_alloc(&rtsi_handle);
+		if (rtsi_handle == 0)
+			return -1;
+
+		// Watchdog must be registered before starting task
+		PIOS_WDG_RegisterFlag(PIOS_WDG_AUTOTUNE);
+
+		// Start main task
+		taskHandle = PIOS_Thread_Create(AutotuneTask, "Autotune", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
 
 		TaskMonitorAdd(TASKINFO_RUNNING_AUTOTUNE, taskHandle);
-		PIOS_WDG_RegisterFlag(PIOS_WDG_AUTOTUNE);
 	}
 	return 0;
 }
 
 MODULE_INITCALL(AutotuneInitialize, AutotuneStart)
 
+static void UpdateSystemIdent(uintptr_t rtsi_handle, const float *noise,
+		float dT_s, uint32_t predicts) {
+	SystemIdentData relay;
+	rtsi_get_gains(rtsi_handle, relay.Beta);
+	rtsi_get_tau(rtsi_handle, &relay.Tau);
+	rtsi_get_bias(rtsi_handle, relay.Bias);
+	if (noise) {
+		relay.Noise[SYSTEMIDENT_NOISE_ROLL]  = noise[0];
+		relay.Noise[SYSTEMIDENT_NOISE_PITCH] = noise[1];
+		relay.Noise[SYSTEMIDENT_NOISE_YAW]   = noise[2];
+	}
+	relay.Period = dT_s * 1000.0f;
+
+	relay.NumAfPredicts = predicts;
+	SystemIdentSet(&relay);
+}
+
+static void UpdateStabilizationDesired(bool doingIdent) {
+	StabilizationDesiredData stabDesired;
+	StabilizationDesiredGet(&stabDesired);
+
+	uint8_t rollMax, pitchMax;
+
+	float manualRate[STABILIZATIONSETTINGS_MANUALRATE_NUMELEM];
+
+	StabilizationSettingsRollMaxGet(&rollMax);
+	StabilizationSettingsPitchMaxGet(&pitchMax);
+	StabilizationSettingsManualRateGet(manualRate);
+
+	ManualControlCommandRollGet(&stabDesired.Roll);
+	stabDesired.Roll *= rollMax;
+	ManualControlCommandPitchGet(&stabDesired.Pitch);
+	stabDesired.Pitch *= pitchMax;
+
+	ManualControlCommandYawGet(&stabDesired.Yaw);
+	stabDesired.Yaw *= manualRate[STABILIZATIONSETTINGS_MANUALRATE_YAW];
+
+	if (doingIdent) {
+		stabDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_ROLL]  = STABILIZATIONDESIRED_STABILIZATIONMODE_SYSTEMIDENT;
+		stabDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_PITCH] = STABILIZATIONDESIRED_STABILIZATIONMODE_SYSTEMIDENT;
+		stabDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_YAW] = STABILIZATIONDESIRED_STABILIZATIONMODE_SYSTEMIDENT;
+	} else {
+		stabDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_ROLL]  = STABILIZATIONDESIRED_STABILIZATIONMODE_ATTITUDE;
+		stabDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_PITCH] = STABILIZATIONDESIRED_STABILIZATIONMODE_ATTITUDE;
+		stabDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_YAW] = STABILIZATIONDESIRED_STABILIZATIONMODE_RATE;
+	}
+
+	ManualControlCommandThrottleGet(&stabDesired.Throttle);
+
+	StabilizationDesiredSet(&stabDesired);
+}
+
 /**
  * Module thread, should not return.
  */
 static void AutotuneTask(void *parameters)
 {
-	//AlarmsClear(SYSTEMALARMS_ALARM_ATTITUDE);
-	
 	enum AUTOTUNE_STATE state = AT_INIT;
 
-	portTickType lastUpdateTime = xTaskGetTickCount();
+	uint32_t lastUpdateTime = PIOS_Thread_Systime();
+
+	float noise[3] = {0};
+
+	uint32_t last_time = 0.0f;
+	const uint32_t DT_MS = 3;
 
 	while(1) {
 
 		PIOS_WDG_UpdateFlag(PIOS_WDG_AUTOTUNE);
+
 		// TODO:
 		// 1. get from queue
 		// 2. based on whether it is flightstatus or manualcontrol
 
-		portTickType diffTime;
+		uint32_t diffTime;
 
 		const uint32_t PREPARE_TIME = 2000;
-		const uint32_t MEAURE_TIME = 30000;
+		const uint32_t MEASURE_TIME = 60000;
+
+		static uint32_t updateCounter = 0;
+
+		bool doingIdent = false;
 
 		FlightStatusData flightStatus;
 		FlightStatusGet(&flightStatus);
@@ -131,102 +209,112 @@ static void AutotuneTask(void *parameters)
 		// Only allow this module to run when autotuning
 		if (flightStatus.FlightMode != FLIGHTSTATUS_FLIGHTMODE_AUTOTUNE) {
 			state = AT_INIT;
-			vTaskDelay(50);
+			PIOS_Thread_Sleep(50);
 			continue;
 		}
 
-		StabilizationDesiredData stabDesired;
-		StabilizationDesiredGet(&stabDesired);
+		float throttle;
 
-		StabilizationSettingsData stabSettings;
-		StabilizationSettingsGet(&stabSettings);
-
-		ManualControlSettingsData manualSettings;
-		ManualControlSettingsGet(&manualSettings);
-
-		ManualControlCommandData manualControl;
-		ManualControlCommandGet(&manualControl);
-
-		RelayTuningSettingsData relaySettings;
-		RelayTuningSettingsGet(&relaySettings);
-
-		bool rate = relaySettings.Mode == RELAYTUNINGSETTINGS_MODE_RATE;
-
-		if (rate) { // rate mode
-			stabDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_ROLL]  = STABILIZATIONDESIRED_STABILIZATIONMODE_RATE;
-			stabDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_PITCH] = STABILIZATIONDESIRED_STABILIZATIONMODE_RATE;
-
-			stabDesired.Roll = manualControl.Roll * stabSettings.ManualRate[STABILIZATIONSETTINGS_MANUALRATE_ROLL];
-			stabDesired.Pitch = manualControl.Pitch * stabSettings.ManualRate[STABILIZATIONSETTINGS_MANUALRATE_PITCH];
-		} else {
-			stabDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_ROLL]  = STABILIZATIONDESIRED_STABILIZATIONMODE_ATTITUDE;
-			stabDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_PITCH] = STABILIZATIONDESIRED_STABILIZATIONMODE_ATTITUDE;
-
-			stabDesired.Roll = manualControl.Roll * stabSettings.RollMax;
-			stabDesired.Pitch = manualControl.Pitch * stabSettings.PitchMax;
-		}
-
-		stabDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_YAW]   = STABILIZATIONDESIRED_STABILIZATIONMODE_RATE;
-		stabDesired.Yaw = manualControl.Yaw * stabSettings.ManualRate[STABILIZATIONSETTINGS_MANUALRATE_YAW];
-		stabDesired.Throttle = manualControl.Throttle;
-
+		ManualControlCommandThrottleGet(&throttle);
+				
 		switch(state) {
 			case AT_INIT:
 
-				lastUpdateTime = xTaskGetTickCount();
+				lastUpdateTime = PIOS_Thread_Systime();
 
 				// Only start when armed and flying
-				if (flightStatus.Armed == FLIGHTSTATUS_ARMED_ARMED && stabDesired.Throttle > 0)
+				if (flightStatus.Armed == FLIGHTSTATUS_ARMED_ARMED && throttle > 0) {
+
+					rtsi_init(rtsi_handle);
+					UpdateSystemIdent(rtsi_handle, NULL, 0.0f, 0);
+
 					state = AT_START;
+
+				}
 				break;
 
 			case AT_START:
 
-				diffTime = xTaskGetTickCount() - lastUpdateTime;
+				diffTime = PIOS_Thread_Systime() - lastUpdateTime;
 
 				// Spend the first block of time in normal rate mode to get airborne
 				if (diffTime > PREPARE_TIME) {
-					state = AT_ROLL;
-					lastUpdateTime = xTaskGetTickCount();
+					state = AT_RUN;
+					lastUpdateTime = PIOS_Thread_Systime();
 				}
+
+
+				last_time = PIOS_DELAY_GetRaw();
+
+				updateCounter = 0;
+
 				break;
 
-			case AT_ROLL:
+			case AT_RUN:
 
-				diffTime = xTaskGetTickCount() - lastUpdateTime;
+				diffTime = PIOS_Thread_Systime() - lastUpdateTime;
 
-				// Run relay mode on the roll axis for the measurement time
-				stabDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_ROLL] = rate ? STABILIZATIONDESIRED_STABILIZATIONMODE_RELAYRATE :
-					STABILIZATIONDESIRED_STABILIZATIONMODE_RELAYATTITUDE;
-				if (diffTime > MEAURE_TIME) { // Move on to next state
-					state = AT_PITCH;
-					lastUpdateTime = xTaskGetTickCount();
+				doingIdent = true;
+
+				// Update the system identification, but only when throttle is applied
+				// so bad values don't result when landing
+				if (throttle > 0) {
+					float y[3];
+					GyrosxGet(y+0);
+					GyrosyGet(y+1);
+					GyroszGet(y+2);
+
+					float u[3];
+					ActuatorDesiredRollGet(u+0);
+					ActuatorDesiredPitchGet(u+1);
+					ActuatorDesiredYawGet(u+2);
+
+					float dT_s = PIOS_DELAY_DiffuS(last_time) * 1.0e-6f;
+
+					rtsi_predict(rtsi_handle, u, y, DT_MS * 0.001f);
+
+					// Get current rate estimates to track noise around that
+					float X[3];
+					rtsi_get_rates(rtsi_handle, X);
+
+					for (uint32_t i = 0; i < 3; i++) {
+						const float NOISE_ALPHA = 0.9997f;  // 10 second time constant at 300 Hz
+						noise[i] = NOISE_ALPHA * noise[i] + (1-NOISE_ALPHA) * (y[i] - X[i]) * (y[i] - X[i]);
+					}
+
+					// Update uavo every 256 cycles to avoid
+					// telemetry spam
+					if (!((updateCounter++) & 0xff)) {
+						UpdateSystemIdent(rtsi_handle, noise, dT_s, updateCounter);
+					}
 				}
-				break;
 
-			case AT_PITCH:
-
-				diffTime = xTaskGetTickCount() - lastUpdateTime;
-
-				// Run relay mode on the pitch axis for the measurement time
-				stabDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_PITCH] = rate ? STABILIZATIONDESIRED_STABILIZATIONMODE_RELAYRATE :
-					STABILIZATIONDESIRED_STABILIZATIONMODE_RELAYATTITUDE;
-				if (diffTime > MEAURE_TIME) { // Move on to next state
+				if (diffTime > MEASURE_TIME) { // Move on to next state
 					state = AT_FINISHED;
-					lastUpdateTime = xTaskGetTickCount();
+					lastUpdateTime = PIOS_Thread_Systime();
 				}
+
+				last_time = PIOS_DELAY_GetRaw();
+
 				break;
 
 			case AT_FINISHED:
 
-				// Wait until disarmed and landed before updating the settings
-				if (flightStatus.Armed == FLIGHTSTATUS_ARMED_DISARMED && stabDesired.Throttle <= 0)
+				// Wait until disarmed and landed before saving the settings
+
+				UpdateSystemIdent(rtsi_handle, noise, 0, updateCounter);
+				if (flightStatus.Armed == FLIGHTSTATUS_ARMED_DISARMED && throttle <= 0)
 					state = AT_SET;
 
 				break;
 
 			case AT_SET:
-				update_stabilization_settings();
+				// If at some point we want to store the settings at the end of
+				// autotune, that can be done here. However, that will await further
+				// testing.
+
+				// Save the settings locally. Note this is done after disarming.
+				UAVObjSave(SystemIdentHandle(), 0);
 				state = AT_INIT;
 				break;
 
@@ -235,82 +323,11 @@ static void AutotuneTask(void *parameters)
 				break;
 		}
 
-		StabilizationDesiredSet(&stabDesired);
+		// Update based on manual controls
+		UpdateStabilizationDesired(doingIdent);
 
-		vTaskDelay(10);
+		PIOS_Thread_Sleep(DT_MS);
 	}
-}
-
-/**
- * Called after measuring roll and pitch to update the
- * stabilization settings
- * 
- * takes in @ref RelayTuning and outputs @ref StabilizationSettings
- */
-static void update_stabilization_settings()
-{
-	RelayTuningData relayTuning;
-	RelayTuningGet(&relayTuning);
-
-	RelayTuningSettingsData relaySettings;
-	RelayTuningSettingsGet(&relaySettings);
-
-	StabilizationSettingsData stabSettings;
-	StabilizationSettingsGet(&stabSettings);
-
-	// Eventually get these settings from RelayTuningSettings
-	const float gain_ratio_r = 1.0f / 3.0f;
-	const float zero_ratio_r = 1.0f / 3.0f;
-	const float gain_ratio_p = 1.0f / 5.0f;
-	const float zero_ratio_p = 1.0f / 5.0f;
-
-	// For now just run over roll and pitch
-	for (uint32_t i = 0; i < 2; i++) {
-		float wu = 1000.0f * 2 * PI / relayTuning.Period[i]; // ultimate freq = output osc freq (rad/s)
-
-		float wc = wu * gain_ratio_r;      // target openloop crossover frequency (rad/s)
-		float zc = wc * zero_ratio_r;      // controller zero location (rad/s)
-		float kpu = 4.0f / PI / relayTuning.Gain[i];  // ultimate gain, i.e. the proportional gain for instablity
-		float kp = kpu * gain_ratio_r;     // proportional gain
-		float ki = zc * kp;                // integral gain
-
-		// Now calculate gains for the next loop out knowing it is the integral of
-	 	// the inner loop -- the plant is position/velocity = scale*1/s
-		float wc2 = wc * gain_ratio_p;          // crossover of the attitude loop
-		float kp2 = wc2;                       // kp of attitude
-		float ki2 = wc2 * zero_ratio_p * kp2;  // ki of attitude
-
-		switch(i) {
-			case 0: // roll
-				stabSettings.RollRatePID[STABILIZATIONSETTINGS_ROLLRATEPID_KP] = kp;
-				stabSettings.RollRatePID[STABILIZATIONSETTINGS_ROLLRATEPID_KI] = ki;
-				stabSettings.RollPI[STABILIZATIONSETTINGS_ROLLPI_KP] = kp2;
-				stabSettings.RollPI[STABILIZATIONSETTINGS_ROLLPI_KI] = ki2;
-				break;
-			case 1: // Pitch
-				stabSettings.PitchRatePID[STABILIZATIONSETTINGS_ROLLRATEPID_KP] = kp;
-				stabSettings.PitchRatePID[STABILIZATIONSETTINGS_ROLLRATEPID_KI] = ki;
-				stabSettings.PitchPI[STABILIZATIONSETTINGS_ROLLPI_KP] = kp2;
-				stabSettings.PitchPI[STABILIZATIONSETTINGS_ROLLPI_KI] = ki2;
-				break;
-			default:
-				// Oh shit oh shit oh shit
-				break;
-		}
-	}
-	switch(relaySettings.Behavior) {
-		case RELAYTUNINGSETTINGS_BEHAVIOR_MEASURE:
-			// Just measure, don't update the stab settings
-			break;
-		case RELAYTUNINGSETTINGS_BEHAVIOR_COMPUTE:
-			StabilizationSettingsSet(&stabSettings);
-			break;
-		case RELAYTUNINGSETTINGS_BEHAVIOR_SAVE:
-			StabilizationSettingsSet(&stabSettings);
-			UAVObjSave(StabilizationSettingsHandle(), 0);
-			break;
-	}
-	
 }
 
 /**

@@ -7,7 +7,7 @@
  *
  * @file       systemmod.c
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013-2015
  * @brief      System module
  *
  * @see        The GNU Public License (GPL) Version 3
@@ -35,6 +35,7 @@
 #include "objectpersistence.h"
 #include "flightstatus.h"
 #include "manualcontrolsettings.h"
+#include "rfm22bstatus.h"
 #include "stabilizationsettings.h"
 #include "stateestimation.h"
 #include "systemstats.h"
@@ -42,6 +43,8 @@
 #include "taskinfo.h"
 #include "watchdogstatus.h"
 #include "taskmonitor.h"
+#include "pios_thread.h"
+#include "pios_queue.h"
 
 //#define DEBUG_THIS_FILE
 
@@ -67,27 +70,29 @@
 #define STACK_SIZE_BYTES 924
 #endif
 
-#define TASK_PRIORITY (tskIDLE_PRIORITY+1)
+#define TASK_PRIORITY PIOS_THREAD_PRIO_LOW
 
 // Private types
 
 // Private variables
 static uint32_t idleCounter;
 static uint32_t idleCounterClear;
-static xTaskHandle systemTaskHandle;
-static xQueueHandle objectPersistenceQueue;
+static struct pios_thread *systemTaskHandle;
+static struct pios_queue *objectPersistenceQueue;
 static bool stackOverflow;
 
 // Private functions
 static void objectUpdatedCb(UAVObjEvent * ev);
 
-#if (defined(COPTERCONTROL) || defined(REVOLUTION) || defined(SIM_OSX)) && ! (defined(SIM_POSIX))
+#ifndef NO_SENSORS
 static void configurationUpdatedCb(UAVObjEvent * ev);
 #endif
 
+static bool indicateError();
 static void updateStats();
 static void updateSystemAlarms();
 static void systemTask(void *parameters);
+static void updateRfm22bStats();
 #if defined(WDG_STATS_DIAGNOSTICS)
 static void updateWDGstats();
 #endif
@@ -100,7 +105,7 @@ int32_t SystemModStart(void)
 	// Initialize vars
 	stackOverflow = false;
 	// Create system task
-	xTaskCreate(systemTask, (signed char *)"System", STACK_SIZE_BYTES/4, NULL, TASK_PRIORITY, &systemTaskHandle);
+	systemTaskHandle = PIOS_Thread_Create(systemTask, "System", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
 	// Register task
 	TaskMonitorAdd(TASKINFO_RUNNING_SYSTEM, systemTaskHandle);
 
@@ -126,7 +131,7 @@ int32_t SystemModInitialize(void)
 	WatchdogStatusInitialize();
 #endif
 
-	objectPersistenceQueue = xQueueCreate(1, sizeof(UAVObjEvent));
+	objectPersistenceQueue = PIOS_Queue_Create(1, sizeof(UAVObjEvent));
 	if (objectPersistenceQueue == NULL)
 		return -1;
 
@@ -164,7 +169,7 @@ static void systemTask(void *parameters)
 	// Listen for SettingPersistance object updates, connect a callback function
 	ObjectPersistenceConnectQueue(objectPersistenceQueue);
 
-#if (defined(COPTERCONTROL) || defined(REVOLUTION) || defined(SIM_OSX)) && ! (defined(SIM_POSIX))
+#ifndef NO_SENSORS
 	// Run this initially to make sure the configuration is checked
 	configuration_check();
 
@@ -177,16 +182,19 @@ static void systemTask(void *parameters)
 		ManualControlSettingsConnectCallback(configurationUpdatedCb);
 	if (FlightStatusHandle())
 		FlightStatusConnectCallback(configurationUpdatedCb);
-#endif
-#if (defined(REVOLUTION) || defined(SIM_OSX)) && ! (defined(SIM_POSIX))
+#ifndef SMALLF1
 	if (StateEstimationHandle())
 		StateEstimationConnectCallback(configurationUpdatedCb);
+#endif
 #endif
 
 	// Main system loop
 	while (1) {
 		// Update the system statistics
 		updateStats();
+
+		// Update the modem status, if present
+		updateRfm22bStats();
 
 		// Update the system alarms
 		updateSystemAlarms();
@@ -206,23 +214,25 @@ static void systemTask(void *parameters)
 #endif	/* PIOS_LED_HEARTBEAT */
 
 		// Turn on the error LED if an alarm is set
+		if (indicateError()) {
 #if defined (PIOS_LED_ALARM)
-		if (AlarmsHasWarnings()) {
 			PIOS_LED_On(PIOS_LED_ALARM);
-		} else {
-			PIOS_LED_Off(PIOS_LED_ALARM);
-		}
 #endif	/* PIOS_LED_ALARM */
+		} else {
+#if defined (PIOS_LED_ALARM)
+			PIOS_LED_Off(PIOS_LED_ALARM);
+#endif	/* PIOS_LED_ALARM */
+		}
 
 		FlightStatusData flightStatus;
 		FlightStatusGet(&flightStatus);
 
 		UAVObjEvent ev;
 		int delayTime = flightStatus.Armed == FLIGHTSTATUS_ARMED_ARMED ?
-			MS2TICKS(SYSTEM_UPDATE_PERIOD_MS) / (LED_BLINK_RATE_HZ * 2) :
-			MS2TICKS(SYSTEM_UPDATE_PERIOD_MS);
+			SYSTEM_UPDATE_PERIOD_MS / (LED_BLINK_RATE_HZ * 2) :
+			SYSTEM_UPDATE_PERIOD_MS;
 
-		if(xQueueReceive(objectPersistenceQueue, &ev, delayTime) == pdTRUE) {
+		if (PIOS_Queue_Receive(objectPersistenceQueue, &ev, delayTime) == true) {
 			// If object persistence is updated call the callback
 			objectUpdatedCb(&ev);
 		}
@@ -277,7 +287,7 @@ static void objectUpdatedCb(UAVObjEvent * ev)
 				retval = UAVObjSave(obj, objper.InstanceID);
 
 				// Not sure why this is needed
-				vTaskDelay(10);
+				PIOS_Thread_Sleep(10);
 
 				// Verify saving worked
 				if (retval == 0)
@@ -322,10 +332,11 @@ static void objectUpdatedCb(UAVObjEvent * ev)
 	}
 }
 
+#ifndef NO_SENSORS
 /**
  * Called whenever a critical configuration component changes
  */
-#if (defined(COPTERCONTROL) || defined(REVOLUTION) || defined(SIM_OSX)) && ! (defined(SIM_POSIX))
+
 static void configurationUpdatedCb(UAVObjEvent * ev)
 {
 	configuration_check();
@@ -336,15 +347,67 @@ static void configurationUpdatedCb(UAVObjEvent * ev)
  * Called periodically to update the WDG statistics
  */
 #if defined(WDG_STATS_DIAGNOSTICS)
+static WatchdogStatusData watchdogStatus;
 static void updateWDGstats() 
 {
-	WatchdogStatusData watchdogStatus;
-	watchdogStatus.BootupFlags = PIOS_WDG_GetBootupFlags();
-	watchdogStatus.ActiveFlags = PIOS_WDG_GetActiveFlags();
-	WatchdogStatusSet(&watchdogStatus);
+	// Only update if something has changed
+	if (watchdogStatus.ActiveFlags != PIOS_WDG_GetActiveFlags() ||
+	    watchdogStatus.BootupFlags != PIOS_WDG_GetBootupFlags()) {
+		watchdogStatus.BootupFlags = PIOS_WDG_GetBootupFlags();
+		watchdogStatus.ActiveFlags = PIOS_WDG_GetActiveFlags();
+		WatchdogStatusSet(&watchdogStatus);
+	}
 }
 #endif
 
+static void updateRfm22bStats() {
+	#if defined(PIOS_INCLUDE_RFM22B)
+
+        // Update the RFM22BStatus UAVO
+        RFM22BStatusData rfm22bStatus;
+        RFM22BStatusInstGet(1,&rfm22bStatus);
+
+        if (pios_rfm22b_id) {
+            // Get the stats from the radio device
+            struct rfm22b_stats radio_stats;
+            PIOS_RFM22B_GetStats(pios_rfm22b_id, &radio_stats);
+
+            // Update the LInk status
+            static bool first_time = true;
+            static uint16_t prev_tx_count = 0;
+            static uint16_t prev_rx_count = 0;
+            rfm22bStatus.HeapRemaining = PIOS_heap_get_free_size();
+            rfm22bStatus.RxGood = radio_stats.rx_good;
+            rfm22bStatus.RxCorrected   = radio_stats.rx_corrected;
+            rfm22bStatus.RxErrors = radio_stats.rx_error;
+            rfm22bStatus.RxSyncMissed = radio_stats.rx_sync_missed;
+            rfm22bStatus.TxMissed = radio_stats.tx_missed;
+            rfm22bStatus.RxFailure     = radio_stats.rx_failure;
+            rfm22bStatus.Resets      = radio_stats.resets;
+            rfm22bStatus.Timeouts    = radio_stats.timeouts;
+            rfm22bStatus.RSSI        = radio_stats.rssi;
+            rfm22bStatus.LinkQuality = radio_stats.link_quality;
+            if (first_time) {
+                first_time = false;
+            } else {
+                uint16_t tx_count = radio_stats.tx_byte_count;
+                uint16_t rx_count = radio_stats.rx_byte_count;
+                uint16_t tx_bytes = (tx_count < prev_tx_count) ? (0xffff - prev_tx_count + tx_count) : (tx_count - prev_tx_count);
+                uint16_t rx_bytes = (rx_count < prev_rx_count) ? (0xffff - prev_rx_count + rx_count) : (rx_count - prev_rx_count);
+                rfm22bStatus.TXRate = (uint16_t)((float)(tx_bytes * 1000) / SYSTEM_UPDATE_PERIOD_MS);
+                rfm22bStatus.RXRate = (uint16_t)((float)(rx_bytes * 1000) / SYSTEM_UPDATE_PERIOD_MS);
+                prev_tx_count = tx_count;
+                prev_rx_count = rx_count;
+            }
+
+            rfm22bStatus.LinkState = radio_stats.link_state;
+        } else {
+            rfm22bStatus.LinkState = RFM22BSTATUS_LINKSTATE_DISABLED;
+        }
+        RFM22BStatusInstSet(1,&rfm22bStatus);
+
+#endif /* if defined(PIOS_INCLUDE_RFM22B) */
+}
 
 /**
  * Called periodically to update the system stats
@@ -393,18 +456,14 @@ uint32_t *ptr = &_irq_stack_end;
  */
 static void updateStats()
 {
-	static portTickType lastTickCount = 0;
+	static uint32_t lastTickCount = 0;
 	SystemStatsData stats;
 
 	// Get stats and update
 	SystemStatsGet(&stats);
-	stats.FlightTime = TICKS2MS(xTaskGetTickCount());
-#if defined(ARCH_POSIX) || defined(ARCH_WIN32)
-	// POSIX port of FreeRTOS doesn't have xPortGetFreeHeapSize()
-	stats.HeapRemaining = 10240;
-#else
-	stats.HeapRemaining = xPortGetFreeHeapSize();
-#endif
+	stats.FlightTime = PIOS_Thread_Systime();
+	stats.HeapRemaining = PIOS_heap_get_free_size();
+	stats.FastHeapRemaining = PIOS_fastheap_get_free_size();
 
 	// Get Irq stack status
 	stats.IRQStackRemaining = GetFreeIrqStackSize();
@@ -414,9 +473,9 @@ static void updateStats()
 		idleCounter = 0;
 	}
 
-	portTickType now = xTaskGetTickCount();
+	uint32_t now = PIOS_Thread_Systime();
 	if (now > lastTickCount) {
-		float dT = TICKS2MS(xTaskGetTickCount() - lastTickCount) / 1000.0f;
+		float dT = (PIOS_Thread_Systime() - lastTickCount) / 1000.0f;
 
 		// In the case of a slightly miscalibrated max idle count, make sure CPULoad does
 		// not go negative and set an alarm inappropriately.
@@ -430,9 +489,9 @@ static void updateStats()
 	idleCounterClear = 1;
 	
 #if defined(PIOS_INCLUDE_ADC) && defined(PIOS_ADC_USE_TEMP_SENSOR)
-	float temp_voltage = 3.3 * PIOS_ADC_DevicePinGet(PIOS_INTERNAL_ADC, 0) / ((1 << 12) - 1);
-	const float STM32_TEMP_V25 = 1.43; /* V */
-	const float STM32_TEMP_AVG_SLOPE = 4.3; /* mV/C */
+	float temp_voltage = 3.3f * PIOS_ADC_DevicePinGet(PIOS_INTERNAL_ADC, 0) / ((1 << 12) - 1);
+	const float STM32_TEMP_V25 = 1.43f; /* V */
+	const float STM32_TEMP_AVG_SLOPE = 4.3f; /* mV/C */
 	stats.CPUTemp = (temp_voltage-STM32_TEMP_V25) * 1000 / STM32_TEMP_AVG_SLOPE + 25;
 #endif
 	SystemStatsSet(&stats);
@@ -506,6 +565,30 @@ static void updateSystemAlarms()
 }
 
 /**
+ * Indicate there are conditions worth an error LED
+ */
+bool indicateError()
+{
+	SystemAlarmsData alarms;
+	SystemAlarmsGet(&alarms);
+	bool error = false;
+	for (uint32_t i = 0; i < SYSTEMALARMS_ALARM_NUMELEM; i++) {
+		switch(i) {
+		case SYSTEMALARMS_ALARM_TELEMETRY:
+			// Suppress most alarms from telemetry. The user can identify if present
+			// from GCS.
+			error |= (alarms.Alarm[i] >= SYSTEMALARMS_ALARM_CRITICAL);
+			break;
+		default:
+			// Warning deserves an error by default
+			error |= (alarms.Alarm[i] >= SYSTEMALARMS_ALARM_WARNING);
+		}
+	}
+
+	return error;
+}
+
+/**
  * Called by the RTOS when the CPU is idle, used to measure the CPU idle time.
  */
 void vApplicationIdleHook(void)
@@ -522,8 +605,9 @@ void vApplicationIdleHook(void)
 /**
  * Called by the RTOS when a stack overflow is detected.
  */
+#if defined(PIOS_INCLUDE_FREERTOS)
 #define DEBUG_STACK_OVERFLOW 0
-void vApplicationStackOverflowHook(xTaskHandle * pxTask, signed portCHAR * pcTaskName)
+void vApplicationStackOverflowHook(uintptr_t pxTask, signed char * pcTaskName)
 {
 	stackOverflow = true;
 #if DEBUG_STACK_OVERFLOW
@@ -532,6 +616,7 @@ void vApplicationStackOverflowHook(xTaskHandle * pxTask, signed portCHAR * pcTas
 	wait_here = true;
 #endif
 }
+#endif /* defined(PIOS_INCLUDE_FREERTOS) */
 
 /**
   * @}

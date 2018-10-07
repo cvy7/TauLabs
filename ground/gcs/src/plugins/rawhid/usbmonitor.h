@@ -62,22 +62,17 @@ extern "C" {
 #endif
 // Some functions no longer included in hidsdi.h
 
-//HIDAPI BOOL NTAPI HidD_GetAttributes (HANDLE, PHIDD_ATTRIBUTES);
+#ifndef _MSC_VER
 HIDAPI VOID NTAPI HidD_GetHidGuid (LPGUID);
 HIDAPI BOOL NTAPI HidD_GetPreparsedData(HANDLE, PHIDP_PREPARSED_DATA  *);
 HIDAPI BOOL NTAPI HidD_FreePreparsedData(PHIDP_PREPARSED_DATA);
 HIDAPI BOOL NTAPI HidD_FlushQueue (HANDLE);
 HIDAPI BOOL NTAPI HidD_GetConfiguration (HANDLE, PHIDD_CONFIGURATION, ULONG);
 HIDAPI BOOL NTAPI HidD_SetConfiguration (HANDLE, PHIDD_CONFIGURATION, ULONG);
-//HIDAPI BOOL NTAPI HidD_GetFeature (HANDLE, PVOID, ULONG);
-//HIDAPI BOOL NTAPI HidD_SetFeature (HANDLE, PVOID, ULONG);
-//HIDAPI BOOL NTAPI HidD_GetNumInputBuffers (HANDLE, PULONG);
-//HIDAPI BOOL NTAPI HidD_SetNumInputBuffers (HANDLE HidDeviceObject, ULONG);
 HIDAPI BOOL NTAPI HidD_GetPhysicalDescriptor (HANDLE, PVOID, ULONG);
-//HIDAPI BOOL NTAPI HidD_GetManufacturerString (HANDLE, PVOID, ULONG);
-//HIDAPI BOOL NTAPI HidD_GetProductString ( HANDLE, PVOID, ULONG);
 HIDAPI BOOL NTAPI HidD_GetIndexedString ( HANDLE, ULONG, PVOID, ULONG);
 HIDAPI BOOL NTAPI HidD_GetSerialNumberString (HANDLE, PVOID, ULONG);
+#endif
 
 #ifdef __cplusplus
 }
@@ -122,6 +117,12 @@ struct USBPortInfo {
     int vendorID;       ///< Vendor ID.
     int productID;      ///< Product ID
     int bcdDevice;
+    bool operator==(USBPortInfo const &port)
+    {
+        return ( (port.serialNumber == serialNumber) && (port.manufacturer == manufacturer) &&
+                 (port.product == product) && (port.UsagePage == UsagePage) && (port.Usage == Usage) &&
+                 (port.vendorID == vendorID) && (port.productID == productID) && (port.bcdDevice == bcdDevice) );
+    }
 };
 
 /**

@@ -5,7 +5,7 @@
  *
  * @file       pios.h
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2013
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2014
  * @brief      Main PiOS header to include all the compiled in PiOS options
  *
  * @see        The GNU Public License (GPL) Version 3
@@ -34,13 +34,11 @@
 /* PIOS Feature Selection */
 #include "pios_config.h"
 
-#if defined(PIOS_INCLUDE_FREERTOS)
-/* FreeRTOS Includes */
-#include "FreeRTOS.h"
-#include "task.h"
-#include "queue.h"
-#include "semphr.h"
-#endif
+#if defined(PIOS_INCLUDE_CHIBIOS)
+/* @note    This is required because of difference in chip define between ChibiOS and ST libs.
+ *          It is also used to force inclusion of chibios_transition defines. */
+#include "hal.h"
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
 
 /* C Lib Includes */
 #include <stdio.h>
@@ -63,14 +61,6 @@
 #include <stm32f10x.h>
 #endif
 
-#if defined(PIOS_INCLUDE_SDCARD)
-/* Dosfs Includes */
-#include <dosfs.h>
-
-/* Mass Storage Device Includes */
-//#include <msd.h>
-#endif
-
 /* Generic initcall infrastructure */
 #if defined(PIOS_INCLUDE_INITCALL)
 #include "pios_initcall.h"
@@ -83,7 +73,6 @@
 #include <pios_sys.h>
 #include <pios_delay.h>
 #include <pios_led.h>
-#include <pios_sdcard.h>
 #include <pios_usart.h>
 #include <pios_irq.h>
 #include <pios_adc.h>
@@ -98,10 +87,11 @@
 #include <pios_ppm.h>
 #include <pios_pwm.h>
 #include <pios_rcvr.h>
+#include <pios_reset.h>
 #if defined(PIOS_INCLUDE_DMA_CB_SUBSCRIBING_FUNCTION)
 #include <pios_dma.h>
 #endif
-#if defined(PIOS_INCLUDE_FREERTOS)
+#if defined(PIOS_INCLUDE_FREERTOS) || defined(PIOS_INCLUDE_CHIBIOS)
 #include <pios_sensors.h>
 #endif
 #include <pios_dsm.h>
@@ -114,7 +104,6 @@
 
 /* PIOS Hardware Includes (Common) */
 #include <pios_heap.h>
-#include <pios_sdcard.h>
 #include <pios_com.h>
 #if defined(PIOS_INCLUDE_MPXV7002)
 #include <pios_mpxv7002.h>
@@ -158,11 +147,8 @@
 #if defined(PIOS_INCLUDE_LSM303)
 #include <pios_lsm303.h>
 #endif
-#if defined(PIOS_INCLUDE_MS5611)
-#include <pios_ms5611.h>
-#endif
-#if defined(PIOS_INCLUDE_MS5611_SPI)
-#include <pios_ms5611_spi.h>
+#if defined(PIOS_INCLUDE_MS5XXX)
+#include <pios_ms5xxx_priv.h>
 #endif
 #if defined(PIOS_INCLUDE_IAP)
 #include <pios_iap.h>
@@ -203,11 +189,6 @@
 #include <pios_crc.h>
 
 #define NELEMENTS(x) (sizeof(x) / sizeof(*(x)))
-
-// portTICK_RATE_MS is in [ms/tick].
-// See http://sourceforge.net/tracker/?func=detail&aid=3498382&group_id=111543&atid=659636
-#define TICKS2MS(t)	((t) * (portTICK_RATE_MS))
-#define MS2TICKS(m)	((m) / (portTICK_RATE_MS))
 
 #endif /* PIOS_H */
 

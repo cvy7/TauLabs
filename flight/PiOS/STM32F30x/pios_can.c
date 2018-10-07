@@ -7,7 +7,7 @@
  * @{
  *
  * @file       pios_can.c
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013-2016
  * @brief      PiOS CAN interface header
  * @see        The GNU Public License (GPL) Version 3
  *
@@ -32,6 +32,10 @@
 #include "pios.h"
 
 #if defined(PIOS_INCLUDE_CAN)
+
+#if defined(PIOS_INCLUDE_FREERTOS)
+#include "FreeRTOS.h"
+#endif /* defined(PIOS_INCLUDE_FREERTOS) */
 
 #include "pios_can_priv.h"
 
@@ -72,10 +76,6 @@ static bool PIOS_CAN_validate(struct pios_can_dev *can_dev)
 {
 	return (can_dev->magic == PIOS_CAN_DEV_MAGIC);
 }
-
-#if !defined(PIOS_INCLUDE_FREERTOS)
-#error PIOS_CAN REQUIRES FREERTOS
-#endif
 
 static struct pios_can_dev *PIOS_CAN_alloc(void)
 {
@@ -138,7 +138,8 @@ int32_t PIOS_CAN_Init(uintptr_t *can_id, const struct pios_can_cfg *cfg)
 
 	/* CAN filter init */
 	CAN_FilterInitTypeDef CAN_FilterInitStructure;
-	CAN_FilterInitStructure.CAN_FilterNumber = 0;
+	// Banks 0..13 are assigned to CAN1 and 14..28 to CAN2
+	CAN_FilterInitStructure.CAN_FilterNumber = (can_dev->cfg->regs == CAN1) ? 0 : 14;
 	CAN_FilterInitStructure.CAN_FilterMode = CAN_FilterMode_IdMask;
 	CAN_FilterInitStructure.CAN_FilterScale = CAN_FilterScale_32bit;
 	CAN_FilterInitStructure.CAN_FilterIdHigh = 0x0000;
@@ -153,6 +154,11 @@ int32_t PIOS_CAN_Init(uintptr_t *can_id, const struct pios_can_cfg *cfg)
 	// Enable the receiver IRQ
  	NVIC_Init((NVIC_InitTypeDef*) &can_dev->cfg->rx_irq.init);
  	NVIC_Init((NVIC_InitTypeDef*) &can_dev->cfg->tx_irq.init);
+
+	// Always enable receiving, regardless of the RxStart method as
+	// the PIOS_CAN driver does not require a PIOS_COM layer for the
+	// queue messages
+	CAN_ITConfig(can_dev->cfg->regs, CAN_IT_FMP1, ENABLE);
 
 	return(0);
 
@@ -212,12 +218,105 @@ static void PIOS_CAN_RegisterTxCallback(uintptr_t can_id, pios_com_callback tx_o
 	can_dev->tx_out_cb = tx_out_cb;
 }
 
+//! The mapping of message types to CAN BUS StdID
+static struct pios_queue *pios_can_queues[PIOS_CAN_LAST];
+
+bool pios_can_valid_msg(enum pios_can_messages msg_id)
+{
+	return (msg_id >= 0 && msg_id < PIOS_CAN_LAST);
+}
+
 /**
- * @brief  This function handles CAN1 RX1 request.
- * @note   We are using RX1 instead of RX0 to avoid conflicts with the
- *         USB IRQ handler.
+ * Process received CAN messages and push them out any corresponding
+ * queues. Called from ISR.
  */
+static bool process_received_message(CanRxMsg message)
+{
+	// Look for a known message that matches this CAN StdId
+	uint32_t msg_id;
+	for (msg_id = 0; msg_id < PIOS_CAN_LAST && pios_can_message_stdid[msg_id] != message.StdId; msg_id++);
+
+	// If StdId is not one of the known messages, bail out
+	if (msg_id == PIOS_CAN_LAST)
+		return false;
+
+	// Get the queue for this message and send the data
+	struct pios_queue *queue = pios_can_queues[msg_id];
+	if (queue == NULL)
+		return false;
+
+	bool woken = false;
+	PIOS_Queue_Send_FromISR(queue, message.Data, &woken);
+
+	return woken;
+}
+
+/**
+ * Create a queue to receive messages for a particular message
+ * and return it
+ * @param[in] id the CAN device ID
+ * @param[in] msg_id The message ID (std ID < 0x7FF)
+ */
+struct pios_queue * PIOS_CAN_RegisterMessageQueue(uintptr_t id, enum pios_can_messages msg_id)
+{
+	if (! pios_can_valid_msg(msg_id))
+		return NULL;
+
+	// Fetch the size of this message type or error if unknown
+	int32_t bytes = get_message_size(msg_id);
+
+	// Return existing queue if created
+	if (pios_can_queues[msg_id] != NULL)
+		return pios_can_queues[msg_id];
+
+	// Create a queue that can manage the data message size
+	struct pios_queue *queue;
+	queue = PIOS_Queue_Create(2, bytes);
+	if (queue == NULL)
+		return NULL;
+
+	// Store the queue handle for the driver
+	pios_can_queues[msg_id] = queue;
+
+	return queue;
+}
+
+// Map the specific IRQ handlers to the device handle
+
+static void PIOS_CAN_RxGeneric(void);
+static void PIOS_CAN_TxGeneric(void);
+
 void CAN1_RX1_IRQHandler(void)
+{
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_PROLOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
+
+	PIOS_CAN_RxGeneric();
+
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_EPILOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
+}
+
+void USB_HP_CAN1_TX_IRQHandler(void)
+{
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_PROLOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
+
+	PIOS_CAN_TxGeneric();
+
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_EPILOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
+}
+
+/**
+ * @brief  This function handles CAN RX IRQs. It either pushes data to the
+ * pios CAN interface or routes a CAN message to a queue, as appropriate
+ */
+static void PIOS_CAN_RxGeneric(void)
 {
 	CAN_ClearITPendingBit(can_dev->cfg->regs, CAN_IT_FMP1);
 
@@ -227,21 +326,25 @@ void CAN1_RX1_IRQHandler(void)
 	CanRxMsg RxMessage;
 	CAN_Receive(CAN1, CAN_FIFO1, &RxMessage);
 
-	if (RxMessage.StdId != CAN_COM_ID)
-		return;
-
 	bool rx_need_yield = false;
-	if (can_dev->rx_in_cb) {
-		(void) (can_dev->rx_in_cb)(can_dev->rx_in_context, RxMessage.Data, RxMessage.DLC, NULL, &rx_need_yield);
+	if (RxMessage.StdId == CAN_COM_ID) {
+		if (can_dev->rx_in_cb) {
+			(void) (can_dev->rx_in_cb)(can_dev->rx_in_context, RxMessage.Data, RxMessage.DLC, NULL, &rx_need_yield);
+		}
+	} else {
+		rx_need_yield = process_received_message(RxMessage);
 	}
 
-	portEND_SWITCHING_ISR(rx_need_yield);
+#if defined(PIOS_INCLUDE_FREERTOS)
+	portEND_SWITCHING_ISR(rx_need_yield ? pdTRUE : pdFALSE);
+#endif /* defined(PIOS_INCLUDE_FREERTOS) */
 }
 
 /**
- * @brief  This function handles CAN1 TX irq and sends more data if available
+ * @brief  This function handles CAN TX irq and sends more data from the
+ * COM layer, if available
  */
-void USB_HP_CAN1_TX_IRQHandler(void)
+static void PIOS_CAN_TxGeneric(void)
 {
 	CAN_ClearITPendingBit(can_dev->cfg->regs, CAN_IT_TME);
 
@@ -270,8 +373,42 @@ void USB_HP_CAN1_TX_IRQHandler(void)
 		// TODO: deal with failure to send and keep the message to retransmit
 	}
 	
-	portEND_SWITCHING_ISR(tx_need_yield);
+#if defined(PIOS_INCLUDE_FREERTOS)
+	portEND_SWITCHING_ISR(tx_need_yield ? pdTRUE : pdFALSE);
+#endif /* defined(PIOS_INCLUDE_FREERTOS) */
 }
+
+/**
+ * PIOS_CAN_TxData transmits a data message with a specified ID
+ * @param[in] id the CAN device ID
+ * @param[in] msg_id The message ID (std ID < 0x7FF)
+ * @param[in] data Pointer to data message
+ * @returns number of bytes sent if successful, -1 if not
+ */
+int32_t PIOS_CAN_TxData(uintptr_t id, enum pios_can_messages msg_id, uint8_t *data)
+{
+	if (! pios_can_valid_msg(msg_id))
+		return -1;
+
+	// Fetch the size of this message type or error if unknown
+	int32_t bytes = get_message_size(msg_id);
+
+	// Look up the CAN BUS Standard ID for this message type
+	uint32_t std_id = pios_can_message_stdid[msg_id];
+
+	// Format and send the message
+	CanTxMsg msg;
+	msg.StdId = std_id & 0x7FF;
+	msg.ExtId = 0;
+	msg.IDE = CAN_ID_STD;
+	msg.RTR = CAN_RTR_DATA;
+	msg.DLC = (bytes > 8) ? 8 : bytes;
+	memcpy(msg.Data, data, msg.DLC);
+	CAN_Transmit(can_dev->cfg->regs, &msg);
+
+	return msg.DLC;
+}
+
 
 #endif /* PIOS_INCLUDE_CAN */
 /**

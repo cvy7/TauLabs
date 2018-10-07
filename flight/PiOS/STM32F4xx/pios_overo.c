@@ -3,12 +3,12 @@
  * @addtogroup PIOS PIOS Core hardware abstraction layer
  * @{
  * @addtogroup   PIOS_OVERO OVERO Functions
- * @brief PIOS interface to read and write to overo 
+ * @brief PIOS interface to read and write to overo
  * @{
  *
  * @file       pios_overo.c
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2012.
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013-2014
  * @brief      Hardware Abstraction Layer for Overo communications
  * @see        The GNU Public License (GPL) Version 3
  * @notes
@@ -82,7 +82,7 @@ struct pios_overo_dev {
 	uintptr_t tx_out_context;
 };
 
-#if defined(PIOS_INCLUDE_FREERTOS)
+#if defined(PIOS_INCLUDE_FREERTOS) || defined(PIOS_INCLUDE_CHIBIOS)
 //! Private methods
 static void PIOS_OVERO_WriteData(struct pios_overo_dev *overo_dev);
 static bool PIOS_OVERO_validate(struct pios_overo_dev * overo_dev);
@@ -129,7 +129,9 @@ static void PIOS_OVERO_WriteData(struct pios_overo_dev *overo_dev)
 			bytes_added = (overo_dev->tx_out_cb)(overo_dev->tx_out_context, writing_pointer, max_bytes, NULL, &tx_need_yield);
 
 #if defined(OVERO_USES_BLOCKING_WRITE)
-			portEND_SWITCHING_ISR(tx_need_yield);
+#if defined(PIOS_INCLUDE_FREERTOS)
+			portEND_SWITCHING_ISR(tx_need_yield ? pdTRUE : pdFALSE);
+#endif /* defined(PIOS_INCLUDE_FREERTOS) */
 #endif
 			overo_dev->writing_offset += bytes_added;
 		}
@@ -142,6 +144,10 @@ static void PIOS_OVERO_WriteData(struct pios_overo_dev *overo_dev)
  */
 void PIOS_OVERO_DMA_irq_handler(uintptr_t overo_id)
 {
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_PROLOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
+
 	struct pios_overo_dev * overo_dev = (struct pios_overo_dev *) overo_id;
 	if(!PIOS_OVERO_validate(overo_dev))
 		return;
@@ -151,17 +157,21 @@ void PIOS_OVERO_DMA_irq_handler(uintptr_t overo_id)
 	overo_dev->writing_buffer = 1 - DMA_GetCurrentMemoryTarget(overo_dev->cfg->dma.tx.channel);
 	overo_dev->writing_offset = 0;
 
-/*	bool rx_need_yield = false;
+#if 0
+	bool rx_need_yield = false;
 	// Get data from the Rx buffer and add to the fifo
 	(void) (overo_dev->rx_in_cb)(overo_dev->rx_in_context, 
 								 &overo_dev->rx_buffer[overo_dev->writing_buffer][0], 
 								PACKET_SIZE, NULL, &rx_need_yield);
 
-	portEND_SWITCHING_ISR(rx_need_yield);
+#if defined(PIOS_INCLUDE_FREERTOS)
+	portEND_SWITCHING_ISR(rx_need_yield ? pdTRUE : pdFALSE);
+#endif /* defined(PIOS_INCLUDE_FREERTOS) */
 
 	// Fill the buffer with known value to prevent rereading these bytes
 	memset(&overo_dev->rx_buffer[overo_dev->writing_buffer][0], 0xFF, PACKET_SIZE);
-*/
+#endif
+
 	// Fill the buffer with known value to prevent resending any bytes
 	memset(&overo_dev->tx_buffer[overo_dev->writing_buffer][0], 0xFF, PACKET_SIZE);
 	
@@ -169,6 +179,10 @@ void PIOS_OVERO_DMA_irq_handler(uintptr_t overo_id)
 	PIOS_OVERO_WriteData(overo_dev);
 
 	overo_dev->packets++;
+
+#if defined(PIOS_INCLUDE_CHIBIOS)
+	CH_IRQ_EPILOGUE();
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
 }
 
 /**

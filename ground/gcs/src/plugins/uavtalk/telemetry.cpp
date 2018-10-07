@@ -28,7 +28,7 @@
  */
 
 #include "telemetry.h"
-#include "oplinksettings.h"
+#include "hwtaulink.h"
 #include "objectpersistence.h"
 #include <QTime>
 #include <QtGlobal>
@@ -366,13 +366,14 @@ void Telemetry::transactionTimeout(ObjectTransactionInfo *transInfo)
     // Check if more retries are pending
     if (transInfo->retriesRemaining > 0)
     {
-        TELEMETRY_QXTLOG_DEBUG(QString("[telemetry.cpp] Transaction timeout:%0 Instance:%1").arg(transInfo->obj->getName() + QString(QString(" 0x") + QString::number(transInfo->obj->getObjID(), 16).toUpper())).arg(transInfo->obj->getInstID()));
+        TELEMETRY_QXTLOG_DEBUG(QString("[telemetry.cpp] Transaction timeout:%0 Instance:%1 Retrying").arg(transInfo->obj->getName() + QString(QString(" 0x") + QString::number(transInfo->obj->getObjID(), 16).toUpper())).arg(transInfo->obj->getInstID()));
         --transInfo->retriesRemaining;
         processObjectTransaction(transInfo);
         ++txRetries;
     }
     else
     {
+        TELEMETRY_QXTLOG_DEBUG(QString("[telemetry.cpp] Transaction timeout:%0 Instance:%1 no more retries. FAILED TRANSACT").arg(transInfo->obj->getName() + QString(QString(" 0x") + QString::number(transInfo->obj->getObjID(), 16).toUpper())).arg(transInfo->obj->getInstID()));
         transInfo->timer->stop();
         transactionFailure(transInfo->obj);
         ++txErrors;
@@ -479,8 +480,14 @@ void Telemetry::processObjectQueue()
     if ( gcsStats.Status != GCSTelemetryStats::STATUS_CONNECTED )
     {
         objQueue.clear();
-        if ( objInfo.obj->getObjID() != GCSTelemetryStats::OBJID && objInfo.obj->getObjID() != OPLinkSettings::OBJID  && objInfo.obj->getObjID() != ObjectPersistence::OBJID )
+        if ( objInfo.obj->getObjID() != GCSTelemetryStats::OBJID &&
+             objInfo.obj->getObjID() != HwTauLink::OBJID &&
+             objInfo.obj->getObjID() != ObjectPersistence::OBJID )
         {
+            // If Telemetry is not connected, then all transactions fail except
+            // - GCSTelemetryStats (to establish connection)
+            // - HwTauLink (to configure the modem)
+            // - ObjectPersistence (to save modem configuration)
             objInfo.obj->emitTransactionCompleted(false);
             objInfo.obj->emitTransactionCompleted(false,false);
             return;

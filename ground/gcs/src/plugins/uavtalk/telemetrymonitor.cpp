@@ -35,7 +35,7 @@
 //This is needed because sometimes the object is lost when asked right uppon connection
 #define SESSION_INIT_RETRIES                3
 //Delay between initial session object fetching retries (number of times defined above)
-#define SESSION_INITIAL_RETRIEVE_TIMEOUT    2000
+#define SESSION_INITIAL_RETRIEVE_TIMEOUT    500
 //Timeout for the all session negotiation, the system will go to failsafe after it
 #define SESSION_RETRIEVE_TIMEOUT            20000
 //Number of retries for the session object fetching during negotiation
@@ -45,7 +45,6 @@
 //IAP object is very important, retry if not able to get it the first time
 #define IAP_OBJECT_RETRIES                  3
 
-#define TELEMETRYMONITOR_DEBUG
 #ifdef TELEMETRYMONITOR_DEBUG
   #define TELEMETRYMONITOR_QXTLOG_DEBUG(...) qDebug()<<__VA_ARGS__
 #else  // TELEMETRYMONITOR_DEBUG
@@ -98,19 +97,25 @@ TelemetryMonitor::TelemetryMonitor(UAVObjectManager* objMngr, Telemetry* tel, QH
     connect(this,SIGNAL(telemetryUpdated(double,double)),cm,SLOT(telemetryUpdated(double,double)));
     connect(sessionObj,SIGNAL(objectUnpacked(UAVObject*)),this,SLOT(sessionObjUnpackedCB(UAVObject*)));
     connect(objMngr,SIGNAL(newInstance(UAVObject*)),this,SLOT(newInstanceSlot(UAVObject*)));
+
+    ExtensionSystem::PluginManager* pm = ExtensionSystem::PluginManager::instance();
+    settings=pm->getObject<Core::Internal::GeneralSettings>();
 }
 
 TelemetryMonitor::~TelemetryMonitor() {
     // Before saying goodbye, set the GCS connection status to disconnected too:
     GCSTelemetryStats::DataFields gcsStats = gcsStatsObj->getData();
     gcsStats.Status = GCSTelemetryStats::STATUS_DISCONNECTED;
-    foreach(UAVObjectManager::ObjectMap map, objMngr->getObjects())
+    if (settings->useSessionManaging())
     {
-        foreach(UAVObject* obj, map.values())
+        foreach(UAVObjectManager::ObjectMap map, objMngr->getObjects())
         {
-            UAVDataObject* dobj = dynamic_cast<UAVDataObject*>(obj);
-            if(dobj)
-                dobj->setIsPresentOnHardware(false);
+            foreach(UAVObject* obj, map.values())
+            {
+                UAVDataObject* dobj = dynamic_cast<UAVDataObject*>(obj);
+                if(dobj)
+                    dobj->setIsPresentOnHardware(false);
+            }
         }
     }
     // Set data
@@ -125,7 +130,7 @@ void TelemetryMonitor::startRetrievingObjects()
     TELEMETRYMONITOR_QXTLOG_DEBUG(QString("%0 connectionStatus changed to CON_RETRIEVING_OBJECT").arg(Q_FUNC_INFO));
     connectionStatus = CON_RETRIEVING_OBJECTS;
     // Get all objects, add metaobjects, settings and data objects with OnChange update mode to the queue
-    queue.empty();
+    queue.clear();
     retries = 0;
     objectRetrieveTimeout->start(OBJECT_RETRIEVE_TIMEOUT);
     foreach(UAVObjectManager::ObjectMap map, objMngr->getObjects().values())
@@ -293,7 +298,7 @@ void TelemetryMonitor::transactionCompleted(UAVObject* obj, bool success)
     else
     {
         TELEMETRYMONITOR_QXTLOG_DEBUG(QString("%0 connection lost while retrieving objects, stopped object retrievel").arg(Q_FUNC_INFO));
-        queue.empty();
+        queue.clear();
         objectRetrieveTimeout->stop();
         sessionRetrieveTimeout->stop();
         sessionInitialRetrieveTimeout->stop();
@@ -340,6 +345,7 @@ void TelemetryMonitor::checkSessionObjNacked(UAVObject *obj, bool success, bool 
 
 void TelemetryMonitor::sessionObjUnpackedCB(UAVObject *obj)
 {
+    sessionObjRetries = 0;
     switch(connectionStatus)
     {
     case CON_INITIALIZING:
@@ -405,12 +411,12 @@ void TelemetryMonitor::sessionObjUnpackedCB(UAVObject *obj)
 
 void TelemetryMonitor::objectRetrieveTimeoutCB()
 {
-    queue.empty();
+    queue.clear();
 }
 
 void TelemetryMonitor::sessionInitialRetrieveTimeoutCB()
 {
-    if(connectionStatus == CON_INITIALIZING)
+    if ( (connectionStatus == CON_INITIALIZING) || (connectionStatus == CON_SESSION_INITIALIZING) )
     {
         if(sessionObjRetries < SESSION_OBJ_RETRIEVE_RETRIES)
         {
@@ -492,7 +498,6 @@ void TelemetryMonitor::startSessionRetrieving(UAVObject *session)
     }
     else if(sessionObj->getSessionID() == 0)
     {
-        sessionInitialRetrieveTimeout->stop();
         objectCount = sessionObj->getNumberOfObjects();
         if(objectCount == 0)
             return;
@@ -646,23 +651,37 @@ void TelemetryMonitor::processStatsUpdates()
     {
         statsTimer->setInterval(STATS_UPDATE_PERIOD_MS);
         qDebug() << "Connection with the autopilot established";
-        connectionStatus = CON_INITIALIZING;
-        sessionInitialRetrieveTimeout->start(SESSION_INITIAL_RETRIEVE_TIMEOUT);
-        connect(sessionObj,SIGNAL(transactionCompleted(UAVObject*,bool,bool)),this, SLOT(checkSessionObjNacked(UAVObject*, bool, bool)),Qt::UniqueConnection);
-        sessionObj->requestUpdate();
-        isManaged = true;
+        ExtensionSystem::PluginManager* pm = ExtensionSystem::PluginManager::instance();
+        Core::Internal::GeneralSettings * settings=pm->getObject<Core::Internal::GeneralSettings>();
+        if (!settings->useSessionManaging())
+        {
+            sessionFallback();
+        }
+        else
+        {
+            connectionStatus = CON_INITIALIZING;
+            sessionInitialRetrieveTimeout->start(SESSION_INITIAL_RETRIEVE_TIMEOUT);
+            connect(sessionObj,SIGNAL(transactionCompleted(UAVObject*,bool,bool)),this, SLOT(checkSessionObjNacked(UAVObject*, bool, bool)),Qt::UniqueConnection);
+            sessionObj->requestUpdate();
+            isManaged = true;
+        }
     }
     if (gcsStats.Status == GCSTelemetryStats::STATUS_DISCONNECTED && gcsStats.Status != oldStatus)
     {
         statsTimer->setInterval(STATS_CONNECT_PERIOD_MS);
         connectionStatus = CON_DISCONNECTED;
-        foreach(UAVObjectManager::ObjectMap map, objMngr->getObjects())
+        ExtensionSystem::PluginManager* pm = ExtensionSystem::PluginManager::instance();
+        Core::Internal::GeneralSettings * settings=pm->getObject<Core::Internal::GeneralSettings>();
+        if (settings->useSessionManaging())
         {
-            foreach(UAVObject* obj, map.values())
+            foreach(UAVObjectManager::ObjectMap map, objMngr->getObjects())
             {
-                UAVDataObject* dobj = dynamic_cast<UAVDataObject*>(obj);
-                if(dobj)
-                    dobj->setIsPresentOnHardware(false);
+                foreach(UAVObject* obj, map.values())
+                {
+                    UAVDataObject* dobj = dynamic_cast<UAVDataObject*>(obj);
+                    if(dobj)
+                        dobj->setIsPresentOnHardware(false);
+                }
             }
         }
         emit disconnected();

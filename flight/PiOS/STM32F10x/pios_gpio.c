@@ -38,7 +38,6 @@
 /* Local Variables */
 static GPIO_TypeDef *GPIO_PORT[PIOS_GPIO_NUM] = PIOS_GPIO_PORTS;
 static const uint32_t GPIO_PIN[PIOS_GPIO_NUM] = PIOS_GPIO_PINS;
-static const uint32_t GPIO_CLK[PIOS_GPIO_NUM] = PIOS_GPIO_CLKS;
 
 /**
 * Initialises all the GPIO's
@@ -54,8 +53,6 @@ void PIOS_GPIO_Init(void)
 */
 void PIOS_GPIO_Enable(uint8_t Pin)
 {
-	//RCC_APB2PeriphClockCmd(GPIO_CLK[Pin], ENABLE);
-
 	GPIO_InitTypeDef GPIO_InitStructure;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
@@ -72,7 +69,7 @@ void PIOS_GPIO_Enable(uint8_t Pin)
 */
 void PIOS_GPIO_On(uint8_t Pin)
 {
-	GPIO_PORT[Pin]->BRR = GPIO_PIN[Pin];
+	GPIO_SetBits(GPIO_PORT[Pin], GPIO_PIN[Pin]);
 }
 
 /**
@@ -81,7 +78,7 @@ void PIOS_GPIO_On(uint8_t Pin)
 */
 void PIOS_GPIO_Off(uint8_t Pin)
 {
-	GPIO_PORT[Pin]->BSRR = GPIO_PIN[Pin];
+	GPIO_ResetBits(GPIO_PORT[Pin], GPIO_PIN[Pin]);
 }
 
 /**
@@ -91,6 +88,15 @@ void PIOS_GPIO_Off(uint8_t Pin)
 void PIOS_GPIO_Toggle(uint8_t Pin)
 {
 	GPIO_PORT[Pin]->ODR ^= GPIO_PIN[Pin];
+}
+
+/**
+* Read Pin value
+* \param[in] Pin Pin Number
+*/
+uint8_t PIOS_GPIO_Read(uint8_t Pin)
+{
+	return GPIO_ReadInputDataBit(GPIO_PORT[Pin], GPIO_PIN[Pin]);
 }
 
 #endif

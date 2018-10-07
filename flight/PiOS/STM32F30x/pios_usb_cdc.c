@@ -9,7 +9,7 @@
  *
  * @file       pios_usb_com_cdc.c
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2013
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2014
  * @brief      USB COM functions (STM32 dependent code)
  * @see        The GNU Public License (GPL) Version 3
  *
@@ -34,6 +34,10 @@
 #include "pios.h"
 
 #if defined(PIOS_INCLUDE_USB_CDC)
+
+#if defined(PIOS_INCLUDE_FREERTOS)
+#include "FreeRTOS.h"
+#endif /* defined(PIOS_INCLUDE_FREERTOS) */
 
 #include "pios_usb.h"
 #include "pios_usb_cdc_priv.h"
@@ -215,8 +219,8 @@ static void PIOS_USB_CDC_SendData(struct pios_usb_cdc_dev * usb_cdc_dev)
 	SetEPTxValid(usb_cdc_dev->cfg->data_tx_ep);
 
 #if defined(PIOS_INCLUDE_FREERTOS)
-	portEND_SWITCHING_ISR(need_yield);
-#endif	/* PIOS_INCLUDE_FREERTOS */
+	portEND_SWITCHING_ISR(need_yield ? pdTRUE : pdFALSE);
+#endif	/* defined(PIOS_INCLUDE_FREERTOS) */
 }
 
 static void PIOS_USB_CDC_TxStart(uintptr_t usbcdc_id, uint16_t tx_bytes_avail)
@@ -298,8 +302,8 @@ static void PIOS_USB_CDC_DATA_EP_OUT_Callback(void)
 	}
 
 #if defined(PIOS_INCLUDE_FREERTOS)
-	portEND_SWITCHING_ISR(need_yield);
-#endif	/* PIOS_INCLUDE_FREERTOS */
+	portEND_SWITCHING_ISR(need_yield ? pdTRUE : pdFALSE);
+#endif	/* defined(PIOS_INCLUDE_FREERTOS) */
 }
 
 static uint16_t control_line_state;

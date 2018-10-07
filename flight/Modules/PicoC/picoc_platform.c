@@ -37,6 +37,7 @@
 #include "picoc_port.h"
 #include "picocstatus.h"
 #include <setjmp.h>
+#include "pios_thread.h"
 
 // Private variables
 static char *heap_memory;
@@ -203,7 +204,7 @@ void *PlatformMalloc(size_t size)
 	if (heap_memory == NULL)
 	{	/* no heap memory used yet. try to get some */
 		heap_size = size;
-		heap_memory = (char *)pvPortMalloc(heap_size);
+		heap_memory = (char *)PIOS_malloc(heap_size);
 	}
 	if ((heap_size >= size) && (heap_memory != NULL) && (!heap_used))
 	{	/* memory is free and size fits */
@@ -237,7 +238,7 @@ void PlatformDebug(const char *format, ...)
 	vsprintf((char *)buffer, format, args);
 
 	PIOS_COM_SendFormattedString(PIOS_COM_PICOC, "[debug:%s]\n", buffer);
-	vTaskDelay(200); // delay to make sure, this is sent out.
+	PIOS_Thread_Sleep(200); // delay to make sure, this is sent out.
 #endif
 }
 

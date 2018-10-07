@@ -53,6 +53,8 @@
 #include "pages/autoupdatepage.h"
 #include "uploader/uploadergadgetfactory.h"
 
+using namespace uploader;
+
 SetupWizard::SetupWizard(QWidget *parent) : QWizard(parent), VehicleConfigurationSource(),
     m_controllerType(NULL),
     m_vehicleType(VEHICLE_UNKNOWN), m_inputType(Core::IBoardType::INPUT_TYPE_UNKNOWN), m_escType(ESC_UNKNOWN),
@@ -238,14 +240,8 @@ QString SetupWizard::getSummaryText()
     case Core::IBoardType::INPUT_TYPE_SBUS:
         summary.append(tr("Futaba S.Bus"));
         break;
-    case Core::IBoardType::INPUT_TYPE_DSM2:
-        summary.append(tr("Spektrum satellite (DSM2)"));
-        break;
-    case Core::IBoardType::INPUT_TYPE_DSMX10BIT:
-        summary.append(tr("Spektrum satellite (DSMX10BIT)"));
-        break;
-    case Core::IBoardType::INPUT_TYPE_DSMX11BIT:
-        summary.append(tr("Spektrum satellite (DSMX11BIT)"));
+    case Core::IBoardType::INPUT_TYPE_DSM:
+        summary.append(tr("Spektrum satellite (DSM)"));
         break;
     case Core::IBoardType::INPUT_TYPE_HOTTSUMD:
         summary.append(tr("Graupner HoTT (SUMD)"));
@@ -265,6 +261,9 @@ QString SetupWizard::getSummaryText()
         break;
     case ESC_RAPID:
         summary.append(tr("Rapid ESC (400 Hz)"));
+        break;
+    case ESC_ONESHOT:
+        summary.append(tr("OneShot (SyncPwm + 125-250us)"));
         break;
     default:
         summary.append(tr("Unknown"));

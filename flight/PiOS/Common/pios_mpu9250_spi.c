@@ -31,17 +31,18 @@
 
 /* Project Includes */
 #include "pios.h"
-#include "pios_semaphore.h"
-#include "physical_constants.h"
 
 #if defined(PIOS_INCLUDE_MPU9250_SPI)
 
+#include "physical_constants.h"
 #include "pios_mpu9250.h"
-
+#include "pios_semaphore.h"
+#include "pios_thread.h"
+#include "pios_queue.h"
 
 /* Private constants */
-#define MPU9250_TASK_PRIORITY   (tskIDLE_PRIORITY + configMAX_PRIORITIES - 1)	// max priority
-#define MPU9250_TASK_STACK      (512 / 4)
+#define MPU9250_TASK_PRIORITY    PIOS_THREAD_PRIO_HIGHEST
+#define MPU9250_TASK_STACK_BYTES 512
 #define PIOS_MPU9250_MAX_DOWNSAMPLE 2
 
 #define MPU9250_WHOAMI_ID       0x71
@@ -49,7 +50,7 @@
 #ifdef PIOS_MPU9250_SPI_HIGH_SPEED
 #define MPU9250_SPI_HIGH_SPEED              PIOS_MPU9250_SPI_HIGH_SPEED
 #else
-#define MPU9250_SPI_HIGH_SPEED              20000000
+#define MPU9250_SPI_HIGH_SPEED              20000000	// should result in 10.5MHz clock on F4 targets like Sparky2
 #endif
 #define MPU9250_SPI_LOW_SPEED               300000
 
@@ -80,10 +81,10 @@ struct mpu9250_dev {
 	uint32_t slave_num;
 	enum pios_mpu60x0_accel_range accel_range;
 	enum pios_mpu60x0_range gyro_range;
-	xQueueHandle gyro_queue;
-	xQueueHandle accel_queue;
-	xQueueHandle mag_queue;
-	xTaskHandle TaskHandle;
+	struct pios_queue *gyro_queue;
+	struct pios_queue *accel_queue;
+	struct pios_queue *mag_queue;
+	struct pios_thread *TaskHandle;
 	struct pios_semaphore *data_ready_sema;
 	const struct pios_mpu9250_cfg *cfg;
 	enum pios_mpu9250_gyro_filter gyro_filter;
@@ -116,36 +117,36 @@ static struct mpu9250_dev *PIOS_MPU9250_alloc(const struct pios_mpu9250_cfg *cfg
 
 	mpu9250_dev->magic = PIOS_MPU9250_DEV_MAGIC;
 
-	mpu9250_dev->accel_queue = xQueueCreate(PIOS_MPU9250_MAX_DOWNSAMPLE, sizeof(struct pios_sensor_accel_data));
+	mpu9250_dev->accel_queue = PIOS_Queue_Create(PIOS_MPU9250_MAX_DOWNSAMPLE, sizeof(struct pios_sensor_accel_data));
 	if (mpu9250_dev->accel_queue == NULL) {
-		vPortFree(mpu9250_dev);
+		PIOS_free(mpu9250_dev);
 		return NULL;
 	}
 
-	mpu9250_dev->gyro_queue = xQueueCreate(PIOS_MPU9250_MAX_DOWNSAMPLE, sizeof(struct pios_sensor_gyro_data));
+	mpu9250_dev->gyro_queue = PIOS_Queue_Create(PIOS_MPU9250_MAX_DOWNSAMPLE, sizeof(struct pios_sensor_gyro_data));
 	if (mpu9250_dev->gyro_queue == NULL) {
-		vQueueDelete(dev->accel_queue);
-		vPortFree(mpu9250_dev);
+		PIOS_Queue_Delete(dev->accel_queue);
+		PIOS_free(mpu9250_dev);
 		return NULL;
 	}
 
 	if (cfg->use_magnetometer) {
-		mpu9250_dev->mag_queue = xQueueCreate(PIOS_MPU9250_MAX_DOWNSAMPLE, sizeof(struct pios_sensor_mag_data));
+		mpu9250_dev->mag_queue = PIOS_Queue_Create(PIOS_MPU9250_MAX_DOWNSAMPLE, sizeof(struct pios_sensor_mag_data));
 		if (mpu9250_dev->mag_queue == NULL) {
-			vQueueDelete(dev->accel_queue);
-			vQueueDelete(dev->gyro_queue);
-			vPortFree(mpu9250_dev);
+			PIOS_Queue_Delete(dev->accel_queue);
+			PIOS_Queue_Delete(dev->gyro_queue);
+			PIOS_free(mpu9250_dev);
 			return NULL;
 		}
 	}
 
 	mpu9250_dev->data_ready_sema = PIOS_Semaphore_Create();
 	if (mpu9250_dev->data_ready_sema == NULL) {
-		vQueueDelete(dev->accel_queue);
-		vQueueDelete(dev->gyro_queue);
+		PIOS_Queue_Delete(dev->accel_queue);
+		PIOS_Queue_Delete(dev->gyro_queue);
 		if (cfg->use_magnetometer)
-			vQueueDelete(dev->mag_queue);
-		vPortFree(mpu9250_dev);
+			PIOS_Queue_Delete(dev->mag_queue);
+		PIOS_free(mpu9250_dev);
 		return NULL;
 	}
 
@@ -416,10 +417,9 @@ int32_t PIOS_MPU9250_SPI_Init(uint32_t spi_id, uint32_t slave_num, const struct 
 		return -10;
 	}
 
-	int result = xTaskCreate(PIOS_MPU9250_Task, (const signed char *)"PIOS_MPU9250_Task",
-						 MPU9250_TASK_STACK, NULL, MPU9250_TASK_PRIORITY,
-						 &dev->TaskHandle);
-	PIOS_Assert(result == pdPASS);
+	dev->TaskHandle = PIOS_Thread_Create(
+			PIOS_MPU9250_Task, "pios_mpu9250", MPU9250_TASK_STACK_BYTES, NULL, MPU9250_TASK_PRIORITY);
+	PIOS_Assert(dev->TaskHandle != NULL);
 
 	PIOS_SENSORS_Register(PIOS_SENSOR_ACCEL, dev->accel_queue);
 	PIOS_SENSORS_Register(PIOS_SENSOR_GYRO, dev->gyro_queue);
@@ -539,7 +539,9 @@ void PIOS_MPU9250_SetGyroLPF(enum pios_mpu9250_gyro_filter filter)
  */
 void PIOS_MPU9250_SetAccelLPF(enum pios_mpu9250_accel_filter filter)
 {
-	PIOS_MPU9250_WriteReg(PIOS_MPU9250_ACCEL_DLPF_CFG_REG, filter);
+	// Note this sets the a_fchoice_b to 0 which enables the DLPF
+	// which is what is desired.
+	PIOS_MPU9250_WriteReg(PIOS_MPU60X0_ACCEL_CFG2_REG, filter);
 
 	dev->accel_filter = filter;
 }
@@ -776,8 +778,8 @@ static void PIOS_MPU9250_Task(void *parameters)
 		gyro_data.z *= gyro_scale;
 		gyro_data.temperature = temperature;
 
-		xQueueSendToBack(dev->accel_queue, (void *)&accel_data, 0);
-		xQueueSendToBack(dev->gyro_queue, (void *)&gyro_data, 0);
+		PIOS_Queue_Send(dev->accel_queue, &accel_data, 0);
+		PIOS_Queue_Send(dev->gyro_queue, &gyro_data, 0);
 
 		if (dev->cfg->use_magnetometer) {
 			uint8_t st1 = mpu9250_rec_buf[IDX_MAG_ST1];
@@ -785,7 +787,7 @@ static void PIOS_MPU9250_Task(void *parameters)
 				mag_data.x *= 1.5f;
 				mag_data.y *= 1.5f;
 				mag_data.z *= 1.5f;
-				xQueueSendToBack(dev->mag_queue, (void *)&mag_data, 0);
+				PIOS_Queue_Send(dev->mag_queue, &mag_data, 0);
 			}
 		}
 	}

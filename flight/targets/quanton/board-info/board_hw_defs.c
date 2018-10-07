@@ -570,15 +570,15 @@ void PIOS_I2C_internal_er_irq_handler(void)
 #include "pios_flashfs_logfs_priv.h"
 
 static const struct flashfs_logfs_cfg flashfs_settings_cfg = {
-	.fs_magic      = 0x3bb141cf,
-	.arena_size    = 0x00010000, /* 256 * slot size */
-	.slot_size     = 0x00000100, /* 256 bytes */
+	.fs_magic = 0x3b1b14cf,
+	.arena_size = 0x00004000,	/* 64 * slot size */
+	.slot_size = 0x00000100,	/* 256 bytes */
 };
 
 static const struct flashfs_logfs_cfg flashfs_waypoints_cfg = {
-	.fs_magic      = 0x9a365a64,
-	.arena_size    = 0x00010000, /* 1024 * slot size */
-	.slot_size     = 0x00000040, /* 64 bytes */
+	.fs_magic = 0x93a566a4,
+	.arena_size = 0x00004000,	/* 64 * slot size */
+	.slot_size = 0x00000040,	/* 64 bytes */
 };
 
 #if defined(PIOS_INCLUDE_FLASH_JEDEC)
@@ -667,12 +667,12 @@ static const struct pios_flash_partition pios_flash_partition_table[] = {
 		.label        = FLASH_PARTITION_LABEL_FW,
 		.chip_desc    = &pios_flash_chip_internal,
 		.first_sector = 5,
-		.last_sector  = 6,
+		.last_sector  = 7,
 		.chip_offset  = (4 * FLASH_SECTOR_16KB) + (1 * FLASH_SECTOR_64KB),
-		.size         = (6 - 5 + 1) * FLASH_SECTOR_128KB,
+		.size         = (7 - 5 + 1) * FLASH_SECTOR_128KB,
 	},
 
-	/* NOTE: sectors 7-11 of the internal flash are currently unallocated */
+	/* NOTE: sectors 8-11 of the internal flash are currently unallocated */
 
 #endif /* PIOS_INCLUDE_FLASH_INTERNAL */
 
@@ -681,18 +681,27 @@ static const struct pios_flash_partition pios_flash_partition_table[] = {
 		.label        = FLASH_PARTITION_LABEL_SETTINGS,
 		.chip_desc    = &pios_flash_chip_external,
 		.first_sector = 0,
-		.last_sector  = 511,
+		.last_sector  = 15,
 		.chip_offset  = 0,
-		.size         = (511 - 0 + 1) * FLASH_SECTOR_4KB,
+		.size         = (15 - 0 + 1) * FLASH_SECTOR_4KB,
 	},
 
 	{
 		.label        = FLASH_PARTITION_LABEL_WAYPOINTS,
 		.chip_desc    = &pios_flash_chip_external,
-		.first_sector = 512,
+		.first_sector = 16,
+		.last_sector  = 31,
+		.chip_offset  = (16 * FLASH_SECTOR_4KB),
+		.size         = (31 - 16 + 1) * FLASH_SECTOR_4KB,
+	},
+
+	{
+		.label        = FLASH_PARTITION_LABEL_LOG,
+		.chip_desc    = &pios_flash_chip_external,
+		.first_sector = 32,
 		.last_sector  = 1023,
-		.chip_offset  = (512 * FLASH_SECTOR_4KB),
-		.size         = (1023 - 512 + 1) * FLASH_SECTOR_4KB,
+		.chip_offset  = (32 * FLASH_SECTOR_4KB),
+		.size         = (1023 - 32 + 1) * FLASH_SECTOR_4KB,
 	},
 #endif	/* PIOS_INCLUDE_FLASH_JEDEC */
 };
@@ -704,6 +713,13 @@ const struct pios_flash_partition * PIOS_BOARD_HW_DEFS_GetPartitionTable (uint32
 	*num_partitions = NELEMENTS(pios_flash_partition_table);
 	return pios_flash_partition_table;
 }
+
+#include "pios_streamfs_priv.h"
+const struct streamfs_cfg streamfs_settings = {
+       .fs_magic      = 0x89abceef,
+       .arena_size    = 0x00001000, /* 64 KB */
+       .write_size    = 0x00000100, /* 256 bytes */
+};
 
 #endif	/* PIOS_INCLUDE_FLASH */
 
@@ -2157,7 +2173,7 @@ static const struct pios_usb_cfg pios_usb_main_cfg = {
 			.GPIO_Speed = GPIO_Speed_25MHz,
 			.GPIO_Mode  = GPIO_Mode_IN,
 			.GPIO_OType = GPIO_OType_OD,
-			.GPIO_PuPd  = GPIO_PuPd_NOPULL,
+			.GPIO_PuPd  = GPIO_PuPd_UP,
 		},
 	}
 };
@@ -2239,6 +2255,13 @@ struct pios_internal_adc_cfg pios_adc_cfg = {
 	},
 	.half_flag = DMA_IT_HTIF4,
 	.full_flag = DMA_IT_TCIF4,
+	.adc_pins = {                                                                                 \
+		{ GPIOA, GPIO_Pin_0,     ADC_Channel_0 },                                                 \
+		{ GPIOA, GPIO_Pin_1,     ADC_Channel_1 },                                                 \
+		{ NULL,  0,              ADC_Channel_Vrefint },           /* Voltage reference */         \
+		{ NULL,  0,              ADC_Channel_TempSensor },        /* Temperature sensor */        \
+	},
+	.adc_pin_count = 4
 };
 
 void PIOS_ADC_DMA_irq_handler(void)

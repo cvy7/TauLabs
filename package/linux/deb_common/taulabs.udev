@@ -26,6 +26,12 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="20a0", ATTRS{idProduct}=="4195", MODE="0664"
 # Quantec Networks GmbH - quanton flight control rev. 1
 SUBSYSTEM=="usb", ATTRS{idVendor}=="0fda", ATTRS{idProduct}=="0100", MODE="0664", GROUP="plugdev"
 
+# Team Black Sheep
+#
+
+# Team Black Sheep - colibri flight control rev. 1
+SUBSYSTEM=="usb", ATTRS{idVendor}=="20a0", ATTRS{idProduct}=="4235", MODE="0664", GROUP="plugdev"
+
 #
 # Tau Labs
 #
@@ -50,3 +56,10 @@ SUBSYSTEM=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="df11", MODE="0664"
 SUBSYSTEM=="usb", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6010", MODE="0664", GROUP="plugdev"
 # Olimex Ltd. OpenOCD JTAG TINY
 SUBSYSTEM=="usb", ATTRS{idVendor}=="15ba", ATTRS{idProduct}=="0004", MODE="0664", GROUP="plugdev"
+
+#
+# AeroQuad
+#
+
+# AeroQuad AQ32 flight controller board
+SUBSYSTEM=="usb", ATTRS{idVendor}=="20a0", ATTRS{idProduct}=="4284", MODE="0664", GROUP="plugdev"

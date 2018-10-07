@@ -7,7 +7,7 @@
  *
  * @file       sensors.c
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013-2014
  * @brief      Update available sensors registered with @ref PIOS_Sensors
  *
  * @see        The GNU Public License (GPL) Version 3
@@ -32,6 +32,7 @@
 #include "pios.h"
 #include "openpilot.h"
 #include "physical_constants.h"
+#include "pios_thread.h"
 
 #include "accels.h"
 #include "actuatordesired.h"
@@ -56,13 +57,13 @@
 
 // Private constants
 #define STACK_SIZE_BYTES 1540
-#define TASK_PRIORITY (tskIDLE_PRIORITY+3)
+#define TASK_PRIORITY PIOS_THREAD_PRIO_HIGH
 #define SENSOR_PERIOD 2
 
 // Private types
 
 // Private variables
-static xTaskHandle sensorsTaskHandle;
+static struct pios_thread *sensorsTaskHandle;
 
 // Private functions
 static void SensorsTask(void *parameters);
@@ -111,10 +112,12 @@ int32_t SensorsInitialize(void)
  */
 int32_t SensorsStart(void)
 {
-	// Start main task
-	xTaskCreate(SensorsTask, (signed char *)"Sensors", STACK_SIZE_BYTES/4, NULL, TASK_PRIORITY, &sensorsTaskHandle);
-	TaskMonitorAdd(TASKINFO_RUNNING_SENSORS, sensorsTaskHandle);
+	// Watchdog must be registered before starting task
 	PIOS_WDG_RegisterFlag(PIOS_WDG_SENSORS);
+
+	// Start main task
+	sensorsTaskHandle = PIOS_Thread_Create(SensorsTask, "Sensors", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
+	TaskMonitorAdd(TASKINFO_RUNNING_SENSORS, sensorsTaskHandle);
 
 	return 0;
 }
@@ -195,7 +198,7 @@ static void SensorsTask(void *parameters)
 				simulateModelCar();
 		}
 
-		vTaskDelay(MS2TICKS(2));
+		PIOS_Thread_Sleep(2);
 
 	}
 }
@@ -316,7 +319,7 @@ static void simulateModelQuadcopter()
 	static float temperature = 20;
 	float Rbe[3][3];
 	
-	const float ACTUATOR_ALPHA = 0.8;
+	const float ACTUATOR_ALPHA = 0.9;
 	const float MAX_THRUST = GRAVITY * 2;
 	const float K_FRICTION = 1;
 	const float GPS_PERIOD = 0.1;
@@ -342,24 +345,11 @@ static void simulateModelQuadcopter()
 	if (thrust != thrust)
 		thrust = 0;
 	
-//	float control_scaling = thrust * thrustToDegs;
-//	// In rad/s
-//	rpy[0] = control_scaling * actuatorDesired.Roll * (1 - ACTUATOR_ALPHA) + rpy[0] * ACTUATOR_ALPHA;
-//	rpy[1] = control_scaling * actuatorDesired.Pitch * (1 - ACTUATOR_ALPHA) + rpy[1] * ACTUATOR_ALPHA;
-//	rpy[2] = control_scaling * actuatorDesired.Yaw * (1 - ACTUATOR_ALPHA) + rpy[2] * ACTUATOR_ALPHA;
-//	
-//	GyrosData gyrosData; // Skip get as we set all the fields
-//	gyrosData.x = rpy[0] * 180 / M_PI + rand_gauss();
-//	gyrosData.y = rpy[1] * 180 / M_PI + rand_gauss();
-//	gyrosData.z = rpy[2] * 180 / M_PI + rand_gauss();
-	
-	RateDesiredData rateDesired;
-	RateDesiredGet(&rateDesired);
-	
-	rpy[0] = (flightStatus.Armed == FLIGHTSTATUS_ARMED_ARMED) * rateDesired.Roll * (1 - ACTUATOR_ALPHA) + rpy[0] * ACTUATOR_ALPHA;
-	rpy[1] = (flightStatus.Armed == FLIGHTSTATUS_ARMED_ARMED) * rateDesired.Pitch * (1 - ACTUATOR_ALPHA) + rpy[1] * ACTUATOR_ALPHA;
-	rpy[2] = (flightStatus.Armed == FLIGHTSTATUS_ARMED_ARMED) * rateDesired.Yaw * (1 - ACTUATOR_ALPHA) + rpy[2] * ACTUATOR_ALPHA;
-	
+	float control_scaling = 500.0f;
+	// In rad/s
+	rpy[0] = control_scaling * actuatorDesired.Roll * (1 - ACTUATOR_ALPHA) + rpy[0] * ACTUATOR_ALPHA;
+	rpy[1] = control_scaling * actuatorDesired.Pitch * (1 - ACTUATOR_ALPHA) + rpy[1] * ACTUATOR_ALPHA;
+	rpy[2] = control_scaling * actuatorDesired.Yaw * (1 - ACTUATOR_ALPHA) + rpy[2] * ACTUATOR_ALPHA;
 
 	temperature = 20;
 	GyrosData gyrosData; // Skip get as we set all the fields
@@ -410,17 +400,17 @@ static void simulateModelQuadcopter()
 	// Gravity causes acceleration of 9.81 in the down direction
 	ned_accel[2] = -thrust * Rbe[2][2] + GRAVITY;
 	
-	// Apply acceleration based on velocity
+	// Apply NED acceleration based on velocity
 	ned_accel[0] -= K_FRICTION * (vel[0] - wind[0]);
 	ned_accel[1] -= K_FRICTION * (vel[1] - wind[1]);
 	ned_accel[2] -= K_FRICTION * (vel[2] - wind[2]);
 
-	// Predict the velocity forward in time
+	// Predict the NED velocity forward in time
 	vel[0] = vel[0] + ned_accel[0] * dT;
 	vel[1] = vel[1] + ned_accel[1] * dT;
 	vel[2] = vel[2] + ned_accel[2] * dT;
 
-	// Predict the position forward in time
+	// Predict the NED position forward in time
 	pos[0] = pos[0] + vel[0] * dT;
 	pos[1] = pos[1] + vel[1] * dT;
 	pos[2] = pos[2] + vel[2] * dT;
@@ -433,7 +423,7 @@ static void simulateModelQuadcopter()
 	}
 		
 	// Sensor feels gravity (when not acceleration in ned frame e.g. ned_accel[2] = 0)
-	ned_accel[2] -= 9.81;
+	ned_accel[2] -= GRAVITY;
 	
 	// Transform the accels back in to body frame
 	AccelsData accelsData; // Skip get as we set all the fields
@@ -478,11 +468,9 @@ static void simulateModelQuadcopter()
 	static uint32_t last_gps_time = 0;
 	if(PIOS_DELAY_DiffuS(last_gps_time) / 1.0e6 > GPS_PERIOD) {
 		// Use double precision here as simulating what GPS produces
-		double T[3];
-		T[0] = homeLocation.Altitude+6.378137E6f * DEG2RAD;
-		T[1] = cosf(homeLocation.Latitude / 10e6 * DEG2RAD)*(homeLocation.Altitude+6.378137E6) * DEG2RAD;
-		T[2] = -1.0;
-		
+		double linearized_conversion_factor_d[3];
+		LLA2NED_linearization_double(homeLocation.Latitude, homeLocation.Altitude, linearized_conversion_factor_d);
+
 		static float gps_drift[3] = {0,0,0};
 		gps_drift[0] = gps_drift[0] * 0.95 + rand_gauss() / 10.0;
 		gps_drift[1] = gps_drift[1] * 0.95 + rand_gauss() / 10.0;
@@ -490,13 +478,14 @@ static void simulateModelQuadcopter()
 
 		GPSPositionData gpsPosition;
 		GPSPositionGet(&gpsPosition);
-		gpsPosition.Latitude = homeLocation.Latitude + ((pos[0] + gps_drift[0]) / T[0] * 10.0e6);
-		gpsPosition.Longitude = homeLocation.Longitude + ((pos[1] + gps_drift[1])/ T[1] * 10.0e6);
-		gpsPosition.Altitude = homeLocation.Altitude + ((pos[2] + gps_drift[2]) / T[2]);
+		gpsPosition.Latitude = homeLocation.Latitude + ((pos[0] + gps_drift[0]) / linearized_conversion_factor_d[0]);
+		gpsPosition.Longitude = homeLocation.Longitude + ((pos[1] + gps_drift[1]) / linearized_conversion_factor_d[1]);
+		gpsPosition.Altitude = homeLocation.Altitude + ((pos[2] + gps_drift[2]) / linearized_conversion_factor_d[2]);
 		gpsPosition.Groundspeed = sqrtf(pow(vel[0] + gps_vel_drift[0],2) + pow(vel[1] + gps_vel_drift[1],2));
 		gpsPosition.Heading = 180 / M_PI * atan2f(vel[1] + gps_vel_drift[1],vel[0] + gps_vel_drift[0]);
 		gpsPosition.Satellites = 7;
 		gpsPosition.PDOP = 1;
+		gpsPosition.Accuracy = 3.0;
 		gpsPosition.Status = GPSPOSITION_STATUS_FIX3D;
 		GPSPositionSet(&gpsPosition);
 		last_gps_time = PIOS_DELAY_GetRaw();
@@ -510,6 +499,7 @@ static void simulateModelQuadcopter()
 		gpsVelocity.North = vel[0] + gps_vel_drift[0];
 		gpsVelocity.East = vel[1] + gps_vel_drift[1];
 		gpsVelocity.Down = vel[2] + gps_vel_drift[2];
+		gpsVelocity.Accuracy = 0.75;
 		GPSVelocitySet(&gpsVelocity);
 		last_gps_vel_time = PIOS_DELAY_GetRaw();
 	}
@@ -777,11 +767,9 @@ static void simulateModelAirplane()
 	static uint32_t last_gps_time = 0;
 	if(PIOS_DELAY_DiffuS(last_gps_time) / 1.0e6 > GPS_PERIOD) {
 		// Use double precision here as simulating what GPS produces
-		double T[3];
-		T[0] = homeLocation.Altitude+6.378137E6f * DEG2RAD;
-		T[1] = cosf(homeLocation.Latitude / 10e6 * DEG2RAD)*(homeLocation.Altitude+6.378137E6) * DEG2RAD;
-		T[2] = -1.0;
-		
+		double linearized_conversion_factor_d[3];
+		LLA2NED_linearization_double(homeLocation.Latitude, homeLocation.Altitude, linearized_conversion_factor_d);
+
 		static float gps_drift[3] = {0,0,0};
 		gps_drift[0] = gps_drift[0] * 0.95 + rand_gauss() / 10.0;
 		gps_drift[1] = gps_drift[1] * 0.95 + rand_gauss() / 10.0;
@@ -789,9 +777,9 @@ static void simulateModelAirplane()
 		
 		GPSPositionData gpsPosition;
 		GPSPositionGet(&gpsPosition);
-		gpsPosition.Latitude = homeLocation.Latitude + ((pos[0] + gps_drift[0]) / T[0] * 10.0e6);
-		gpsPosition.Longitude = homeLocation.Longitude + ((pos[1] + gps_drift[1])/ T[1] * 10.0e6);
-		gpsPosition.Altitude = homeLocation.Altitude + ((pos[2] + gps_drift[2]) / T[2]);
+		gpsPosition.Latitude = homeLocation.Latitude + ((pos[0] + gps_drift[0]) / linearized_conversion_factor_d[0]);
+		gpsPosition.Longitude = homeLocation.Longitude + ((pos[1] + gps_drift[1]) / linearized_conversion_factor_d[1]);
+		gpsPosition.Altitude = homeLocation.Altitude + ((pos[2] + gps_drift[2]) / linearized_conversion_factor_d[2]);
 		gpsPosition.Groundspeed = sqrtf(pow(vel[0] + gps_vel_drift[0],2) + pow(vel[1] + gps_vel_drift[1],2));
 		gpsPosition.Heading = 180 / M_PI * atan2f(vel[1] + gps_vel_drift[1],vel[0] + gps_vel_drift[0]);
 		gpsPosition.Satellites = 7;
@@ -1034,10 +1022,8 @@ static void simulateModelCar()
 	static uint32_t last_gps_time = 0;
 	if(PIOS_DELAY_DiffuS(last_gps_time) / 1.0e6 > GPS_PERIOD) {
 		// Use double precision here as simulating what GPS produces
-		double T[3];
-		T[0] = homeLocation.Altitude+6.378137E6f * DEG2RAD;
-		T[1] = cosf(homeLocation.Latitude / 10e6 * DEG2RAD)*(homeLocation.Altitude+6.378137E6) * DEG2RAD;
-		T[2] = -1.0;
+		double linearized_conversion_factor_d[3];
+		LLA2NED_linearization_double(homeLocation.Latitude, homeLocation.Altitude, linearized_conversion_factor_d);
 		
 		static float gps_drift[3] = {0,0,0};
 		gps_drift[0] = gps_drift[0] * 0.95 + rand_gauss() / 10.0;
@@ -1046,9 +1032,9 @@ static void simulateModelCar()
 		
 		GPSPositionData gpsPosition;
 		GPSPositionGet(&gpsPosition);
-		gpsPosition.Latitude = homeLocation.Latitude + ((pos[0] + gps_drift[0]) / T[0] * 10.0e6);
-		gpsPosition.Longitude = homeLocation.Longitude + ((pos[1] + gps_drift[1])/ T[1] * 10.0e6);
-		gpsPosition.Altitude = homeLocation.Altitude + ((pos[2] + gps_drift[2]) / T[2]);
+		gpsPosition.Latitude = homeLocation.Latitude + ((pos[0] + gps_drift[0]) / linearized_conversion_factor_d[0]);
+		gpsPosition.Longitude = homeLocation.Longitude + ((pos[1] + gps_drift[1]) / linearized_conversion_factor_d[1]);
+		gpsPosition.Altitude = homeLocation.Altitude + ((pos[2] + gps_drift[2]) / linearized_conversion_factor_d[2]);
 		gpsPosition.Groundspeed = sqrtf(pow(vel[0] + gps_vel_drift[0],2) + pow(vel[1] + gps_vel_drift[1],2));
 		gpsPosition.Heading = 180 / M_PI * atan2f(vel[1] + gps_vel_drift[1],vel[0] + gps_vel_drift[0]);
 		gpsPosition.Satellites = 7;

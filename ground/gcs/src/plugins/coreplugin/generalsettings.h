@@ -2,6 +2,7 @@
  ******************************************************************************
  *
  * @file       generalsettings.h
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2014
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
  *             Parts by Nokia Corporation (qt-info@nokia.com) Copyright (C) 2009.
  * @addtogroup GCSPlugins GCS Plugins
@@ -60,12 +61,21 @@ public:
     bool autoConnect() const;
     bool autoSelect() const;
     bool useUDPMirror() const;
+    bool useSessionManaging() const;
     void readSettings(QSettings* qs);
     void saveSettings(QSettings* qs);
     bool useExpertMode() const;
+    QString getForumUser() const;
+    QString getForumPassword() const;
+    void setForumUser(QString);
+    void setForumPassword(QString);
     QNetworkProxy getNetworkProxy();
+    void setObservations(QString value);
+    void setAircraftDescription(QString value);
+    QString getObservations();
+    QString getAircraftDescription();
 signals:
-
+    void generalSettingsChanged();
 private slots:
     void resetInterfaceColor();
     void resetLanguage();
@@ -91,7 +101,11 @@ private:
     QString m_proxyHostname;
     QString m_proxyUser;
     QString m_proxyPassword;
-
+    QString m_forumUser;
+    QString m_forumPassword;
+    QString m_observations;
+    QString m_aircraft;
+    bool m_useSessionManaging;
 };
 } // namespace Internal
 } // namespace Core

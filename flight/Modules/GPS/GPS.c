@@ -7,7 +7,7 @@
  *
  * @file       GPS.c
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013-2014
  * @brief      GPS module, handles UBX and NMEA streams from GPS
  * @see        The GNU Public License (GPL) Version 3
  *
@@ -40,6 +40,7 @@
 #include "gpssatellites.h"
 #include "gpsvelocity.h"
 #include "modulesettings.h"
+#include "pios_thread.h"
 
 #include "NMEA.h"
 #include "UBX.h"
@@ -48,7 +49,6 @@
 #if defined(PIOS_GPS_PROVIDES_AIRSPEED)
 #include "gps_airspeed.h"
 #endif
-
 
 // ****************
 // Private functions
@@ -59,7 +59,7 @@ static void updateSettings();
 // ****************
 // Private constants
 
-#define GPS_TIMEOUT_MS                  500
+#define GPS_TIMEOUT_MS                  750
 #define GPS_COM_TIMEOUT_MS              100
 
 
@@ -69,7 +69,7 @@ static void updateSettings();
 	#define STACK_SIZE_BYTES            850
 #endif // PIOS_GPS_MINIMAL
 
-#define TASK_PRIORITY                   (tskIDLE_PRIORITY + 1)
+#define TASK_PRIORITY                   PIOS_THREAD_PRIO_LOW
 
 // ****************
 // Private variables
@@ -77,12 +77,9 @@ static void updateSettings();
 static uint32_t gpsPort;
 static bool module_enabled = false;
 
-static xTaskHandle gpsTaskHandle;
+static struct pios_thread *gpsTaskHandle;
 
 static char* gps_rx_buffer;
-
-static uint32_t timeOfLastCommandMs;
-static uint32_t timeOfLastUpdateMs;
 
 static struct GPS_RX_STATS gpsRxStats;
 
@@ -98,12 +95,12 @@ int32_t GPSStart(void)
 	if (module_enabled) {
 		if (gpsPort) {
 			// Start gps task
-			xTaskCreate(gpsTask, (signed char *)"GPS", STACK_SIZE_BYTES/4, NULL, TASK_PRIORITY, &gpsTaskHandle);
+			gpsTaskHandle = PIOS_Thread_Create(gpsTask, "GPS", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
 			TaskMonitorAdd(TASKINFO_RUNNING_GPS, gpsTaskHandle);
 			return 0;
 		}
 
-		AlarmsSet(SYSTEMALARMS_ALARM_GPS, SYSTEMALARMS_ALARM_CRITICAL);
+		AlarmsSet(SYSTEMALARMS_ALARM_GPS, SYSTEMALARMS_ALARM_ERROR);
 	}
 	return -1;
 }
@@ -130,30 +127,24 @@ int32_t GPSInitialize(void)
 	}
 #endif
 
-#if defined(REVOLUTION)
-	// These objects MUST be initialized for Revolution
-	// because the rest of the system expects to just
-	// attach to their queues
-	GPSPositionInitialize();
-	GPSVelocityInitialize();
-	GPSTimeInitialize();
-	GPSSatellitesInitialize();
-	HomeLocationInitialize();
-	UBloxInfoInitialize();
-	updateSettings();
-
-#else
+	// These things are only conditional on small F1 targets.
+	// Expected to be always present otherwise.
+#ifdef SMALLF1
 	if (gpsPort && module_enabled) {
+#endif
 		GPSPositionInitialize();
 		GPSVelocityInitialize();
 #if !defined(PIOS_GPS_MINIMAL)
 		GPSTimeInitialize();
 		GPSSatellitesInitialize();
+		HomeLocationInitialize();
+		UBloxInfoInitialize();
 #endif
 #if defined(PIOS_GPS_PROVIDES_AIRSPEED)
 		AirspeedActualInitialize();
 #endif
 		updateSettings();
+#ifdef SMALLF1
 	}
 #endif
 
@@ -161,10 +152,10 @@ int32_t GPSInitialize(void)
 		ModuleSettingsGPSDataProtocolGet(&gpsProtocol);
 		switch (gpsProtocol) {
 			case MODULESETTINGS_GPSDATAPROTOCOL_NMEA:
-				gps_rx_buffer = pvPortMalloc(NMEA_MAX_PACKET_LENGTH);
+				gps_rx_buffer = PIOS_malloc(NMEA_MAX_PACKET_LENGTH);
 				break;
 			case MODULESETTINGS_GPSDATAPROTOCOL_UBX:
-				gps_rx_buffer = pvPortMalloc(sizeof(struct UBXPacket));
+				gps_rx_buffer = PIOS_malloc(sizeof(struct UBXPacket));
 				break;
 			default:
 				gps_rx_buffer = NULL;
@@ -180,64 +171,88 @@ int32_t GPSInitialize(void)
 MODULE_INITCALL(GPSInitialize, GPSStart);
 
 // ****************
-/**
- * Main gps task. It does not return.
- */
 
-static void gpsTask(void *parameters)
+static void gpsConfigure(uint8_t gpsProtocol)
 {
-	portTickType xDelay = MS2TICKS(GPS_COM_TIMEOUT_MS);
-	uint32_t timeNowMs = TICKS2MS(xTaskGetTickCount());
+	ModuleSettingsGPSAutoConfigureOptions gpsAutoConfigure;
+	ModuleSettingsGPSAutoConfigureGet(&gpsAutoConfigure);
 
-	GPSPositionData gpsposition;
-	uint8_t	gpsProtocol;
-
-	ModuleSettingsGPSDataProtocolGet(&gpsProtocol);
-
-#if defined(PIOS_GPS_PROVIDES_AIRSPEED)
-	gps_airspeed_initialize();
-#endif
-
-	timeOfLastUpdateMs = timeNowMs;
-	timeOfLastCommandMs = timeNowMs;
-
+	if (gpsAutoConfigure != MODULESETTINGS_GPSAUTOCONFIGURE_TRUE) {
+		return;
+	}
 
 #if !defined(PIOS_GPS_MINIMAL)
 	switch (gpsProtocol) {
 #if defined(PIOS_INCLUDE_GPS_UBX_PARSER)
 		case MODULESETTINGS_GPSDATAPROTOCOL_UBX:
 		{
-			uint8_t gpsAutoConfigure;
-			ModuleSettingsGPSAutoConfigureGet(&gpsAutoConfigure);
+			// Runs through a number of possible GPS baud rates to
+			// configure the ublox baud rate. This uses a NMEA string
+			// so could work for either UBX or NMEA actually. This is
+			// somewhat redundant with updateSettings below, but that
+			// is only called on startup and is not an issue.
 
-			if (gpsAutoConfigure == MODULESETTINGS_GPSAUTOCONFIGURE_TRUE) {
+			ModuleSettingsGPSSpeedOptions baud_rate;
+			ModuleSettingsGPSConstellationOptions constellation;
+			ModuleSettingsGPSSBASConstellationOptions sbas_const;
+			ModuleSettingsGPSDynamicsModeOptions dyn_mode;
 
-				// Wait for power to stabilize before talking to external devices
-				vTaskDelay(MS2TICKS(1000));
+			ModuleSettingsGPSSpeedGet(&baud_rate);
+			ModuleSettingsGPSConstellationGet(&constellation);
+			ModuleSettingsGPSSBASConstellationGet(&sbas_const);
+			ModuleSettingsGPSDynamicsModeGet(&dyn_mode);
 
-				// Runs through a number of possible GPS baud rates to
-				// configure the ublox baud rate. This uses a NMEA string
-				// so could work for either UBX or NMEA actually. This is
-				// somewhat redundant with updateSettings below, but that
-				// is only called on startup and is not an issue.
-				ModuleSettingsGPSSpeedOptions baud_rate;
-				ModuleSettingsGPSSpeedGet(&baud_rate);
-				ubx_cfg_set_baudrate(gpsPort, baud_rate);
+			ubx_cfg_set_baudrate(gpsPort, baud_rate);
 
-				vTaskDelay(MS2TICKS(1000));
+			PIOS_Thread_Sleep(1000);
 
-				ubx_cfg_send_configuration(gpsPort, gps_rx_buffer);
-			}
+			ubx_cfg_send_configuration(gpsPort, gps_rx_buffer,
+					constellation, sbas_const, dyn_mode);
 		}
-			break;
+		break;
 #endif
 	}
 #endif /* PIOS_GPS_MINIMAL */
+}
+
+/**
+ * Main gps task. It does not return.
+ */
+
+static void gpsTask(void *parameters)
+{
+	GPSPositionData gpsposition;
+
+	uint32_t timeOfLastUpdateMs = 0;
+	uint32_t timeOfConfigAttemptMs = 0;
+
+	uint8_t	gpsProtocol;
+
+#ifdef PIOS_GPS_PROVIDES_AIRSPEED
+	gps_airspeed_initialize();
+#endif
 
 	GPSPositionGet(&gpsposition);
+
+	// Wait for power to stabilize before talking to external devices
+	PIOS_Thread_Sleep(1000);
+
 	// Loop forever
-	while (1)
-	{
+	while (1) {
+		uint32_t xDelay = GPS_COM_TIMEOUT_MS;
+
+		uint32_t loopTimeMs = PIOS_Thread_Systime();
+
+		// XXX TODO: also on modulesettings change..
+		if (!timeOfConfigAttemptMs) {
+			ModuleSettingsGPSDataProtocolGet(&gpsProtocol);
+
+			gpsConfigure(gpsProtocol);
+			timeOfConfigAttemptMs = PIOS_Thread_Systime();
+
+			continue;
+		}
+
 		uint8_t c;
 
 		// This blocks the task until there is something on the buffer
@@ -261,20 +276,24 @@ static void gpsTask(void *parameters)
 			}
 
 			if (res == PARSER_COMPLETE) {
-				timeNowMs = TICKS2MS(xTaskGetTickCount());
-				timeOfLastUpdateMs = timeNowMs;
-				timeOfLastCommandMs = timeNowMs;
+				timeOfLastUpdateMs = loopTimeMs;
 			}
+
+			xDelay = 0;	// For now on, don't block / wait,
+					// but consume what we can from the fifo
 		}
 
 		// Check for GPS timeout
-		timeNowMs = TICKS2MS(xTaskGetTickCount());
-		if ((timeNowMs - timeOfLastUpdateMs) >= GPS_TIMEOUT_MS) {
+		if ((loopTimeMs - timeOfLastUpdateMs) >= GPS_TIMEOUT_MS) {
 			// we have not received any valid GPS sentences for a while.
 			// either the GPS is not plugged in or a hardware problem or the GPS has locked up.
 			uint8_t status = GPSPOSITION_STATUS_NOGPS;
 			GPSPositionStatusSet(&status);
 			AlarmsSet(SYSTEMALARMS_ALARM_GPS, SYSTEMALARMS_ALARM_ERROR);
+			/* Don't reinitialize too often. */
+			if ((loopTimeMs - timeOfConfigAttemptMs) >= GPS_TIMEOUT_MS) {
+				timeOfConfigAttemptMs = 0; // reinit next loop
+			}
 		} else {
 			// we appear to be receiving GPS sentences OK, we've had an update
 			//criteria for GPS-OK taken from this post

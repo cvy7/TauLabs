@@ -4,7 +4,8 @@
  * @file       mainwindow.cpp
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
  *             Parts by Nokia Corporation (qt-info@nokia.com) Copyright (C) 2009.
- * @author     Tau Labs, http://taulabs.org Copyright (C) 2012-2013
+ * @author     dRonin, http://dronin.org Copyright (C) 2015
+ * @author     Tau Labs, http://taulabs.org Copyright (C) 2012-2015
  * @addtogroup GCSPlugins GCS Plugins
  * @{
  * @addtogroup CorePlugin Core Plugin
@@ -39,7 +40,6 @@
 #include "generalsettings.h"
 #include "messagemanager.h"
 #include "modemanager.h"
-#include "mimedatabase.h"
 #include "plugindialog.h"
 #include "shortcutsettings.h"
 #include "uavgadgetmanager.h"
@@ -53,14 +53,11 @@
 #include "iconfigurableplugin.h"
 #include <QStyleFactory>
 #include "manhattanstyle.h"
-#include "rightpane.h"
 #include "settingsdialog.h"
 #include "threadmanager.h"
 #include "uniqueidmanager.h"
-#include "variablemanager.h"
 #include "versiondialog.h"
 
-#include <coreplugin/settingsdatabase.h>
 #include <extensionsystem/pluginmanager.h>
 #include "dialogs/iwizard.h"
 #include <utils/hostosinfo.h>
@@ -103,22 +100,12 @@ MainWindow::MainWindow() :
     m_uniqueIDManager(new UniqueIDManager()),
     m_globalContext(QList<int>() << Constants::C_GLOBAL_ID),
     m_additionalContexts(m_globalContext),
-    // keep this in sync with main() in app/main.cpp
-    m_settings(new QSettings(XmlConfig::XmlSettingsFormat, QSettings::UserScope,
-                             QLatin1String("TauLabs"), QLatin1String("TauLabs_config"), this)),
-    m_globalSettings(new QSettings(XmlConfig::XmlSettingsFormat, QSettings::SystemScope,
-                                 QLatin1String("TauLabs"), QLatin1String("TauLabs_config"), this)),
-    m_settingsDatabase(new SettingsDatabase(QFileInfo(m_settings->fileName()).path(),
-                                            QLatin1String("TauLabs_config"),
-                                            this)),
     m_dontSaveSettings(false),
     m_actionManager(new ActionManagerPrivate(this)),
-    m_variableManager(new VariableManager(this)),
     m_threadManager(new ThreadManager(this)),
     m_modeManager(0),
     m_connectionManager(0),
     m_boardManager(0),
-    m_mimeDatabase(new MimeDatabase),
     m_versionDialog(0),
     m_authorsDialog(0),
     m_activeContext(0),
@@ -138,6 +125,25 @@ MainWindow::MainWindow() :
 #endif /* Q_OS_MAC */
     m_toggleFullScreenAction(0)
 {
+    // keep this in sync with main() in app/main.cpp
+    m_settings = new QSettings(XmlConfig::XmlSettingsFormat, QSettings::UserScope,
+                             QLatin1String("TauLabs"), QLatin1String("TauLabs_config.autosave"), this);
+    // Copy original settings file to working settings. Do this in scope so that
+    // we are guaranteed that the originalSettings file is closed. This prevents corruption
+    // since the QSettings being used are copies of the original file.
+    {
+        QSettings originalSettings(XmlConfig::XmlSettingsFormat, QSettings::UserScope,
+                                   QLatin1String("TauLabs"), QLatin1String("TauLabs_config"), this);
+
+        // There is no copy constructor for QSettings, so we have to do it manually
+        m_settings->clear();
+        QStringList keys = originalSettings.allKeys();
+        for( QStringList::iterator i = keys.begin(); i != keys.end(); i++ )
+        {
+            m_settings->setValue( *i, originalSettings.value( *i ) );
+        }
+    }
+
     setWindowTitle(QLatin1String(Core::Constants::GCS_NAME));
     if (!Utils::HostOsInfo::isMacHost())
         QApplication::setWindowIcon(QIcon(Core::Constants::ICON_TAULABS));
@@ -235,6 +241,23 @@ MainWindow::~MainWindow()
     m_generalSettings = 0;
     delete m_workspaceSettings;
     m_workspaceSettings = 0;
+
+    // Copy working settings back to original settings file. Do this in scope so that
+    // we are guaranteed that the originalSettings file is closed. This minimizes the risk
+    // of corruption since the QSettings are saved (almost) atomically.
+    {
+        QSettings originalSettings(XmlConfig::XmlSettingsFormat, QSettings::UserScope,
+                                   QLatin1String("TauLabs"), QLatin1String("TauLabs_config"), this);
+
+        // There is no copy constructor for QSettings, so we have to do it manually
+        originalSettings.clear();
+        QStringList keys = m_settings->allKeys();
+        for( QStringList::iterator i = keys.begin(); i != keys.end(); i++ )
+        {
+            originalSettings.setValue( *i, m_settings->value( *i ) );
+        }
+    }
+
     delete m_settings;
     m_settings = 0;
     delete m_uniqueIDManager;
@@ -246,8 +269,6 @@ MainWindow::~MainWindow()
 
     delete m_modeManager;
     m_modeManager = 0;
-    delete m_mimeDatabase;
-    m_mimeDatabase = 0;
 }
 
 bool MainWindow::init(QString *errorMessage)
@@ -315,10 +336,17 @@ void MainWindow::extensionsInitialized()
         }
         if(showDialog)
         {
+            // This has often ended up behind the splash screen, which looks
+            // bad.
+            emit hideSplash();
+
             importSettings * dialog=new importSettings(this);
             dialog->loadFiles(directory.absolutePath());
             dialog->exec();
             filename=dialog->choosenConfig();
+
+            emit showSplash();
+
             settings=new QSettings(filename, XmlConfig::XmlSettingsFormat);
             delete dialog;
         }
@@ -919,11 +947,6 @@ QSettings *MainWindow::settings(QSettings::Scope scope) const
         return m_globalSettings;
 }
 
-VariableManager *MainWindow::variableManager() const
-{
-     return m_variableManager;
-}
-
 ThreadManager *MainWindow::threadManager() const
 {
      return m_threadManager;
@@ -953,11 +976,6 @@ UAVGadgetInstanceManager *MainWindow::uavGadgetInstanceManager() const
 ModeManager *MainWindow::modeManager() const
 {
     return m_modeManager;
-}
-
-MimeDatabase *MainWindow::mimeDatabase() const
-{
-    return m_mimeDatabase;
 }
 
 GeneralSettings * MainWindow::generalSettings() const
@@ -1302,8 +1320,17 @@ void MainWindow::saveSettings(IConfigurablePlugin* plugin, QSettings* qs)
 
 void MainWindow::deleteSettings()
 {
+    // Clear the in-memory settings
     m_settings->clear();
     m_settings->sync();
+
+    // Clear the on-disk settings
+    QSettings originalSettings(XmlConfig::XmlSettingsFormat, QSettings::UserScope,
+                               QLatin1String("TauLabs"), QLatin1String("TauLabs_config"), this);
+    originalSettings.clear();
+    originalSettings.sync();
+
+    // Don't save the settings when exiting
     m_dontSaveSettings = true;
 }
 

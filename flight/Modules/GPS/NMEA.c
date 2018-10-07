@@ -78,7 +78,7 @@ static bool nmeaProcessGPGSA(GPSPositionData * GpsData, bool* gpsDataUpdated, ch
 	static bool nmeaProcessGPGSV(GPSPositionData * GpsData, bool* gpsDataUpdated, char* param[], uint8_t nbParam);
 #endif //PIOS_GPS_MINIMAL
 
-const static struct nmea_parser nmea_parsers[] = {
+static const struct nmea_parser nmea_parsers[] = {
 	{
 		.prefix = "GGA",
 		.handler = nmeaProcessGPGGA,
@@ -189,7 +189,7 @@ int parse_nmea_stream (uint8_t c, char *gps_rx_buffer, GPSPositionData *GpsData,
 	return PARSER_INCOMPLETE;
 }
 
-const static struct nmea_parser *NMEA_find_parser_by_prefix(const char *prefix)
+static const struct nmea_parser *NMEA_find_parser_by_prefix(const char *prefix)
 {
 	if (!prefix) {
 		return (NULL);
@@ -764,6 +764,10 @@ static bool nmeaProcessGPGSA(GPSPositionData * GpsData, bool* gpsDataUpdated, ch
 
 	// next field: VDOP
 	GpsData->VDOP = NMEA_real_to_float(param[17]);
+
+	// NMEA doesn't have this.  Assume we have a nominally 5m accurate
+	// receiver and scale accordingly.
+	GpsData->Accuracy = GpsData->PDOP * 5.0f;
 
 	return true;
 }

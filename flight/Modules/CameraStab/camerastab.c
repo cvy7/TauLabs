@@ -7,7 +7,7 @@
  *
  * @file       camerastab.c
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2013
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2014
  * @brief      Stabilize camera against the roll pitch and yaw of aircraft
  *
  * @see        The GNU Public License (GPL) Version 3
@@ -44,6 +44,9 @@
 #include "openpilot.h"
 #include "misc_math.h"
 #include "physical_constants.h"
+#include "pios_thread.h"
+#include "pios_can.h"
+#include "coordinate_conversions.h"
 
 #include "accessorydesired.h"
 #include "attitudeactual.h"
@@ -67,7 +70,7 @@ enum {ROLL,PITCH,YAW,MAX_AXES};
 
 // Private variables
 static struct CameraStab_data {
-	portTickType lastSysTime;
+	uint32_t lastSysTime;
 	uint8_t AttitudeFilter;
 	float attitude_filtered[MAX_AXES];
 	float inputs[CAMERASTABSETTINGS_INPUT_NUMELEM];
@@ -81,6 +84,7 @@ static struct CameraStab_data {
 static void attitudeUpdated(UAVObjEvent* ev);
 static void settings_updated_cb(UAVObjEvent * ev);
 static void applyFF(uint8_t index, float dT_ms, float *attitude, CameraStabSettingsData* cameraStab);
+static void gimbal_can_message();
 
 #if defined(CAMERASTAB_POI_MODE)
 static void tablet_info_flag_update(UAVObjEvent * ev);
@@ -113,7 +117,7 @@ int32_t CameraStabInitialize(void)
 	if (module_enabled) {
 
 		// allocate and initialize the static data storage only if module is enabled
-		csd = (struct CameraStab_data *) pvPortMalloc(sizeof(struct CameraStab_data));
+		csd = (struct CameraStab_data *) PIOS_malloc(sizeof(struct CameraStab_data));
 		if (csd == NULL) {
 			module_enabled = false;
 			return -1;
@@ -121,7 +125,7 @@ int32_t CameraStabInitialize(void)
 
 		// make sure that all inputs[] are zeroed
 		memset(csd, 0, sizeof(struct CameraStab_data));
-		csd->lastSysTime = xTaskGetTickCount() - MS2TICKS(SAMPLE_PERIOD_MS);
+		csd->lastSysTime = PIOS_Thread_Systime() - SAMPLE_PERIOD_MS;
 
 		AttitudeActualInitialize();
 		CameraStabSettingsInitialize();
@@ -140,7 +144,7 @@ int32_t CameraStabInitialize(void)
 			.instId = 0,
 			.event = 0,
 		};
-		EventPeriodicCallbackCreate(&ev, attitudeUpdated, MS2TICKS(SAMPLE_PERIOD_MS));
+		EventPeriodicCallbackCreate(&ev, attitudeUpdated, SAMPLE_PERIOD_MS);
 
 		return 0;
 	}
@@ -170,8 +174,8 @@ static void attitudeUpdated(UAVObjEvent* ev)
 	CameraStabSettingsData *settings = &csd->settings;
 
 	// Check how long since last update, time delta between calls in ms
-	portTickType thisSysTime = xTaskGetTickCount();
-	float dT_ms = TICKS2MS(thisSysTime - csd->lastSysTime);
+	uint32_t thisSysTime = PIOS_Thread_Systime();
+	float dT_ms = thisSysTime - csd->lastSysTime;
 	csd->lastSysTime = thisSysTime;
 
 	if (dT_ms <= 0)
@@ -253,9 +257,6 @@ static void attitudeUpdated(UAVObjEvent* ev)
 			if (yaw < 0.0f)
 				yaw += 360.0f;
 
-			// Store the absolute declination relative to UAV
-			CameraDesiredDeclinationSet(&pitch);
-
 			// Only try and track objects more than 2 m away
 			if (distance > 2) {
 				switch (i) {
@@ -263,7 +264,8 @@ static void attitudeUpdated(UAVObjEvent* ev)
 					// Does not make sense to use position to control yaw
 					break;
 				case CAMERASTABSETTINGS_INPUT_PITCH:
-					// Sign for declination is opposite of the sign for pitch used below
+					// Store the absolute declination relative to UAV
+					CameraDesiredDeclinationSet(&pitch);
 					csd->inputs[CAMERASTABSETTINGS_INPUT_PITCH] = -pitch;
 					break;
 				case CAMERASTABSETTINGS_INPUT_YAW:
@@ -280,7 +282,7 @@ static void attitudeUpdated(UAVObjEvent* ev)
 
 		// Set output channels
 		output = bound_sym((attitude + csd->inputs[i]) / settings->OutputRange[i], 1.0f);
-		if (TICKS2MS(thisSysTime) > LOAD_DELAY) {
+		if (thisSysTime > LOAD_DELAY) {
 			switch (i) {
 			case ROLL:
 				CameraDesiredRollSet(&output);
@@ -294,6 +296,9 @@ static void attitudeUpdated(UAVObjEvent* ev)
 			}
 		}
 	}
+
+	// Send a message over CAN, if include
+	gimbal_can_message();
 }
 
 /**
@@ -372,27 +377,55 @@ static void tablet_info_process() {
 
 		PoiLocationData poi;
 
-		float lat, alt;
-		lat = homeLocation.Latitude / 10.0e6f * DEG2RAD;
-		alt = homeLocation.Altitude;
+		float linearized_conversion_factor_f[3];
+		LLA2NED_linearization_float(homeLocation.Latitude, homeLocation.Altitude, linearized_conversion_factor_f);
 
-		float T[3];
-		T[0] = alt+6.378137E6f;
-		T[1] = cosf(lat)*(alt+6.378137E6f);
-		T[2] = -1.0f;
+		float NED[3];
+		get_linearized_3D_transformation(tablet.Latitude, tablet.Longitude, tablet.Altitude,
+		                                 homeLocation.Latitude, homeLocation.Longitude, homeLocation.Altitude,
+		                                 linearized_conversion_factor_f, NED);
 
-		float dL[3] = {(tablet.Latitude - homeLocation.Latitude) / 10.0e6f * DEG2RAD,
-			(tablet.Longitude - homeLocation.Longitude) / 10.0e6f * DEG2RAD,
-			(tablet.Altitude - homeLocation.Altitude)};
 
-		poi.North = T[0] * dL[0];
-		poi.East = T[1] * dL[1];
-		poi.Down = T[2] * dL[2];
+		poi.North = NED[0];
+		poi.East  = NED[1];
+		poi.Down  = NED[2];
 		PoiLocationSet(&poi);
 	}
 }
 
 #endif /* CAMERASTAB_POI_MODE */
+
+
+#if defined(PIOS_INCLUDE_CAN)
+extern uintptr_t pios_can_id;
+#endif /* PIOS_INCLUDE_CAN */
+
+/**
+ * Relay control messages to an external gimbal
+ */
+static void gimbal_can_message()
+{
+#if defined(PIOS_INCLUDE_CAN)
+	AttitudeActualData attitude;
+	AttitudeActualGet(&attitude);
+
+	CameraDesiredData cameraDesired;
+	CameraDesiredGet(&cameraDesired);
+
+	struct pios_can_gimbal_message bgc_message = {
+		.fc_roll = attitude.Roll,
+		.fc_pitch = attitude.Pitch,
+		.fc_yaw = attitude.Yaw,
+		.setpoint_roll = 0,
+		.setpoint_pitch = cameraDesired.Declination,
+		.setpoint_yaw = cameraDesired.Bearing
+	};
+
+	PIOS_CAN_TxData(pios_can_id, PIOS_CAN_GIMBAL, (uint8_t *) &bgc_message);
+#endif /* PIOS_INCLUDE_CAN */
+}
+
+
 /**
  * @}
  * @}

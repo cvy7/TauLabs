@@ -5,14 +5,14 @@ QT += xml
 QT -= gui
 
 macx {
-    QMAKE_CFLAGS_X86_64 += -mmacosx-version-min=10.7
-    QMAKE_CXXFLAGS_X86_64 = $$QMAKE_CFLAGS_X86_64
+    QMAKE_MACOSX_DEPLOYMENT_TARGET=10.9
 }
 
 cache()
 
 TARGET = uavobjgenerator
 CONFIG += console
+CONFIG += c++11
 CONFIG -= app_bundle
 TEMPLATE = app
 SOURCES += main.cpp \
@@ -22,7 +22,6 @@ SOURCES += main.cpp \
     generators/flight/uavobjectgeneratorflight.cpp \
     generators/gcs/uavobjectgeneratorgcs.cpp \
     generators/matlab/uavobjectgeneratormatlab.cpp \
-    generators/python/uavobjectgeneratorpython.cpp \
     generators/wireshark/uavobjectgeneratorwireshark.cpp \
     generators/generator_common.cpp
 HEADERS += uavobjectparser.h \
@@ -30,6 +29,5 @@ HEADERS += uavobjectparser.h \
     generators/java/uavobjectgeneratorjava.h \
     generators/gcs/uavobjectgeneratorgcs.h \
     generators/matlab/uavobjectgeneratormatlab.h \
-    generators/python/uavobjectgeneratorpython.h \
     generators/wireshark/uavobjectgeneratorwireshark.h \
     generators/generator_common.h

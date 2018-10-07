@@ -1,13 +1,16 @@
 TEMPLATE = lib
 TARGET = Utils
-QMAKE_CXXFLAGS += -Wno-sign-compare
+
+!win32-msvc*:QMAKE_CXXFLAGS += -Wno-sign-compare
+win32: QMAKE_CXXFLAGS_RELEASE -= -Zc:strictStrings
 
 QT += gui \
     network \
     xml \
     svg \
     opengl \
-    declarative \
+    qml \
+    quick \
     widgets
 
 DEFINES += QTCREATOR_UTILS_LIB
@@ -16,7 +19,6 @@ include(../../taulabslibrary.pri)
 
 SOURCES += reloadpromptutils.cpp \
     settingsutils.cpp \
-    filesearch.cpp \
     pathchooser.cpp \
     pathlisteditor.cpp \
     filewizardpage.cpp \
@@ -54,8 +56,9 @@ SOURCES += reloadpromptutils.cpp \
     homelocationutil.cpp \
     mytabbedstackwidget.cpp \
     mytabwidget.cpp \
-    cachedsvgitem.cpp \
-    svgimageprovider.cpp
+    svgimageprovider.cpp \
+    phpbb.cpp \
+    foruminteractionform.cpp
 
 SOURCES += xmlconfig.cpp
 
@@ -70,7 +73,6 @@ else:SOURCES += consoleprocess_unix.cpp
 HEADERS += utils_global.h \
     reloadpromptutils.h \
     settingsutils.h \
-    filesearch.h \
     listutils.h \
     pathchooser.h \
     pathlisteditor.h \
@@ -111,8 +113,9 @@ HEADERS += utils_global.h \
     homelocationutil.h \
     mytabbedstackwidget.h \
     mytabwidget.h \
-    cachedsvgitem.h \
-    svgimageprovider.h
+    svgimageprovider.h \
+    phpbb.h \
+    foruminteractionform.h
 
 
 HEADERS += xmlconfig.h
@@ -121,6 +124,7 @@ FORMS += filewizardpage.ui \
     projectintropage.ui \
     newclasswidget.ui \
     submiteditorwidget.ui \
-	checkablemessagebox.ui
+    checkablemessagebox.ui \
+    foruminteractionform.ui
 
 RESOURCES += utils.qrc

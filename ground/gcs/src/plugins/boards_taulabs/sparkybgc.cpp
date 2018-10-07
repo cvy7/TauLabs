@@ -1,7 +1,7 @@
 /**
  ******************************************************************************
  * @file       sparkybgc.cpp
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013-2014
  *
  * @addtogroup GCSPlugins GCS Plugins
  * @{
@@ -30,8 +30,9 @@
 #include <uavobjectmanager.h>
 #include "uavobjectutil/uavobjectutilmanager.h"
 #include <extensionsystem/pluginmanager.h>
+#include "sparkybgcconfiguration.h"
 
-#include "hwsparky.h"
+#include "hwsparkybgc.h"
 
 /**
  * @brief Sparky::Sparky
@@ -88,6 +89,8 @@ bool SparkyBGC::queryCapabilities(BoardCapabilities capability)
         return true;
     case BOARD_CAPABILITIES_RADIO:
         return false;
+    case BOARD_CAPABILITIES_OSD:
+        return false;
     }
     return false;
 }
@@ -106,7 +109,7 @@ QStringList SparkyBGC::getSupportedProtocols()
 
 QPixmap SparkyBGC::getBoardPicture()
 {
-    return QPixmap(":/taulabs/images/sparky.png");
+    return QPixmap(":/taulabs/images/sparkybgc.png");
 }
 
 QString SparkyBGC::getHwUAVO()
@@ -133,35 +136,29 @@ bool SparkyBGC::setInputOnPort(enum InputType type, int port_num)
 
     ExtensionSystem::PluginManager *pm = ExtensionSystem::PluginManager::instance();
     UAVObjectManager *uavoManager = pm->getObject<UAVObjectManager>();
-    HwSparky *hwSparky = HwSparky::GetInstance(uavoManager);
-    Q_ASSERT(hwSparky);
-    if (!hwSparky)
+    HwSparkyBGC *hwSparkyBGC = HwSparkyBGC::GetInstance(uavoManager);
+    Q_ASSERT(hwSparkyBGC);
+    if (!hwSparkyBGC)
         return false;
 
-    HwSparky::DataFields settings = hwSparky->getData();
+    HwSparkyBGC::DataFields settings = hwSparkyBGC->getData();
 
     switch(type) {
     case INPUT_TYPE_PPM:
-        settings.RcvrPort = HwSparky::RCVRPORT_PPM;
+        settings.RcvrPort = HwSparkyBGC::RCVRPORT_PPM;
         break;
     case INPUT_TYPE_SBUS:
-        settings.RcvrPort = HwSparky::RCVRPORT_SBUS;
+        settings.RcvrPort = HwSparkyBGC::RCVRPORT_SBUS;
         break;
-    case INPUT_TYPE_DSM2:
-        settings.RcvrPort = HwSparky::RCVRPORT_DSM2;
-        break;
-    case INPUT_TYPE_DSMX10BIT:
-        settings.RcvrPort = HwSparky::RCVRPORT_DSMX10BIT;
-        break;
-    case INPUT_TYPE_DSMX11BIT:
-        settings.RcvrPort = HwSparky::RCVRPORT_DSMX11BIT;
+    case INPUT_TYPE_DSM:
+        settings.RcvrPort = HwSparkyBGC::RCVRPORT_DSM;
         break;
     default:
         return false;
     }
 
     // Apply these changes
-    hwSparky->setData(settings);
+    hwSparkyBGC->setData(settings);
 
     return true;
 }
@@ -178,25 +175,67 @@ enum Core::IBoardType::InputType SparkyBGC::getInputOnPort(int port_num)
 
     ExtensionSystem::PluginManager *pm = ExtensionSystem::PluginManager::instance();
     UAVObjectManager *uavoManager = pm->getObject<UAVObjectManager>();
-    HwSparky *hwSparky = HwSparky::GetInstance(uavoManager);
-    Q_ASSERT(hwSparky);
-    if (!hwSparky)
+    HwSparkyBGC *hwSparkyBGC = HwSparkyBGC::GetInstance(uavoManager);
+    Q_ASSERT(hwSparkyBGC);
+    if (!hwSparkyBGC)
         return INPUT_TYPE_UNKNOWN;
 
-    HwSparky::DataFields settings = hwSparky->getData();
+    HwSparkyBGC::DataFields settings = hwSparkyBGC->getData();
 
     switch(settings.RcvrPort) {
-    case HwSparky::RCVRPORT_PPM:
+    case HwSparkyBGC::RCVRPORT_PPM:
         return INPUT_TYPE_PPM;
-    case HwSparky::RCVRPORT_SBUS:
+    case HwSparkyBGC::RCVRPORT_SBUS:
         return INPUT_TYPE_SBUS;
-    case HwSparky::RCVRPORT_DSM2:
-        return INPUT_TYPE_DSM2;
-    case HwSparky::RCVRPORT_DSMX10BIT:
-        return INPUT_TYPE_DSMX10BIT;
-    case HwSparky::RCVRPORT_DSMX11BIT:
-        return INPUT_TYPE_DSMX11BIT;
+    case HwSparkyBGC::RCVRPORT_DSM:
+        return INPUT_TYPE_DSM;
     default:
         return INPUT_TYPE_UNKNOWN;
     }
+}
+
+int SparkyBGC::queryMaxGyroRate()
+{
+    ExtensionSystem::PluginManager *pm = ExtensionSystem::PluginManager::instance();
+    UAVObjectManager *uavoManager = pm->getObject<UAVObjectManager>();
+    HwSparkyBGC *hwSparkyBGC = HwSparkyBGC::GetInstance(uavoManager);
+    Q_ASSERT(hwSparkyBGC);
+    if (!hwSparkyBGC)
+        return 0;
+
+    HwSparkyBGC::DataFields settings = hwSparkyBGC->getData();
+
+    switch(settings.GyroRange) {
+    case HwSparkyBGC::GYRORANGE_250:
+        return 250;
+    case HwSparkyBGC::GYRORANGE_500:
+        return 500;
+    case HwSparkyBGC::GYRORANGE_1000:
+        return 1000;
+    case HwSparkyBGC::GYRORANGE_2000:
+        return 2000;
+    default:
+        return 500;
+    }
+}
+
+/**
+ * @brief SparkyBGC::getBoardConfiguration create the custom configuration
+ * dialog for SparkyBGC.
+ * @param parent
+ * @param connected
+ * @return
+ */
+QWidget * SparkyBGC::getBoardConfiguration(QWidget *parent, bool connected)
+{
+    Q_UNUSED(connected);
+    return new SparkyBgcConfiguration(parent);
+
+}
+
+
+QStringList SparkyBGC::getAdcNames()
+{
+    // TODO: Confirm with @peabody124 if this is correct
+    return QStringList() << "VBAT" << "Current" << "RSSI";
 }

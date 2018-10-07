@@ -46,9 +46,12 @@ public:
         ~ConfigModuleWidget();
 
 private slots:
-    void updateAirspeedUAVO(UAVObject *);
     void updateAirspeedGroupbox(UAVObject *);
+    void enableAirspeedTypeGPS(bool);
+    void enableAirspeedTypePitot(bool);
     void toggleVibrationTest();
+    void toggleBatteryMonitoringPin();
+    void toggleBatteryMonitoringGb();
 
     void recheckTabs();
     void objectUpdated(UAVObject * obj, bool success);
@@ -62,6 +65,10 @@ private:
     void enableAirspeedTab(bool enabled);
     void enableVibrationTab(bool enabled);
     void enableHoTTTelemetryTab(bool enabled);
+    void enableGeofenceTab(bool enabled);
+    void enablePicoCTab(bool enabled);
+
+    void refreshAdcNames(void);
 
     static QString trueString;
     static QString falseString;

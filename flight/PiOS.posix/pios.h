@@ -3,7 +3,7 @@
  *
  * @file       pios.h  
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013-2014
  * @brief      Main PiOS header. 
  *                 - Central header for the project.
  * @see        The GNU Public License (GPL) Version 3
@@ -30,7 +30,14 @@
 #define PIOS_H
 
 /* PIOS Feature Selection */
-#include "pios_config_sim.h"
+#include "pios_config.h"
+
+#if defined(PIOS_INCLUDE_CHIBIOS)
+/* @note    This is required because of difference in chip define between ChibiOS and ST libs.
+ *          It is also used to force inclusion of chibios_transition defines. */
+#include "hal.h"
+#endif /* defined(PIOS_INCLUDE_CHIBIOS) */
+
 #include <pios_posix.h>
 
 #if defined(PIOS_INCLUDE_FREERTOS)
@@ -70,6 +77,7 @@
 #include <pios_debug.h>
 #include <pios_crc.h>
 #include <pios_rcvr.h>
+#include <pios_reset.h>
 #include <pios_irq.h>
 #include <pios_sensors.h>
 #include <pios_sim.h>
@@ -84,9 +92,11 @@
 
 #define NELEMENTS(x) (sizeof(x) / sizeof(*(x)))
 
+#if defined(PIOS_INCLUDE_FREERTOS)
 // portTICK_RATE_MS is in [ms/tick].
 // See http://sourceforge.net/tracker/?func=detail&aid=3498382&group_id=111543&atid=659636
 #define TICKS2MS(t)	((t) * (portTICK_RATE_MS))
 #define MS2TICKS(m)	((m) / (portTICK_RATE_MS))
+#endif /* defined(PIOS_INCLUDE_FREERTOS) */
 
 #endif /* PIOS_H */

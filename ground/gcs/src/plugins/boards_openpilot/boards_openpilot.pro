@@ -4,6 +4,7 @@ include(../../taulabsgcsplugin.pri)
 include(../../plugins/uavobjects/uavobjects.pri)
 include(../../plugins/coreplugin/coreplugin.pri)
 include(../../plugins/uavobjectutil/uavobjectutil.pri)
+include(../../plugins/uavobjectwidgetutils/uavobjectwidgetutils.pri)
 
 OTHER_FILES += OpenPilot.pluginspec \
                 OpenPilot.json
@@ -11,16 +12,18 @@ OTHER_FILES += OpenPilot.pluginspec \
 HEADERS += \
     openpilotplugin.h \
     coptercontrol.h \
-    revolution.h \
-    revomini.h \
-    pipxtreme.h
+    config_cc_hw_widget.h \
+    revomini.h 
 
 SOURCES += \
     openpilotplugin.cpp \
     coptercontrol.cpp \
-    revolution.cpp \
-    revomini.cpp \
-    pipxtreme.cpp
+    config_cc_hw_widget.cpp \
+    revomini.cpp 
 
 RESOURCES += \
-    openpilot.qrc
+    openpilot.qrc \
+    ../coreplugin/core.qrc
+
+FORMS += \
+    cc_hw_settings.ui

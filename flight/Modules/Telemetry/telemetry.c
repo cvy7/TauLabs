@@ -7,7 +7,7 @@
  *
  * @file       telemetry.c
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2013
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2014
  * @brief      Telemetry module, handles telemetry and UAVObject updates
  * @see        The GNU Public License (GPL) Version 3
  *
@@ -33,13 +33,15 @@
 #include "gcstelemetrystats.h"
 #include "modulesettings.h"
 #include "sessionmanaging.h"
+#include "pios_thread.h"
+#include "pios_queue.h"
 
 // Private constants
 #define MAX_QUEUE_SIZE   TELEM_QUEUE_SIZE
 #define STACK_SIZE_BYTES PIOS_TELEM_STACK_SIZE
-#define TASK_PRIORITY_RX (tskIDLE_PRIORITY + 2)
-#define TASK_PRIORITY_TX (tskIDLE_PRIORITY + 2)
-#define TASK_PRIORITY_TXPRI (tskIDLE_PRIORITY + 2)
+#define TASK_PRIORITY_RX PIOS_THREAD_PRIO_NORMAL
+#define TASK_PRIORITY_TX PIOS_THREAD_PRIO_NORMAL
+#define TASK_PRIORITY_TXPRI PIOS_THREAD_PRIO_NORMAL
 #define REQ_TIMEOUT_MS 250
 #define MAX_RETRIES 2
 #define STATS_UPDATE_PERIOD_MS 4000
@@ -48,19 +50,18 @@
 // Private types
 
 // Private variables
-static uintptr_t telemetryPort;
-static xQueueHandle queue;
+static struct pios_queue *queue;
 
 #if defined(PIOS_TELEM_PRIORITY_QUEUE)
-static xQueueHandle priorityQueue;
-static xTaskHandle telemetryTxPriTaskHandle;
+static struct pios_queue *priorityQueue;
+static struct pios_thread *telemetryTxPriTaskHandle;
 static void telemetryTxPriTask(void *parameters);
 #else
 #define priorityQueue queue
 #endif
 
-static xTaskHandle telemetryTxTaskHandle;
-static xTaskHandle telemetryRxTaskHandle;
+static struct pios_thread *telemetryTxTaskHandle;
+static struct pios_thread *telemetryRxTaskHandle;
 static uint32_t txErrors;
 static uint32_t txRetries;
 static uint32_t timeOfLastObjectUpdate;
@@ -97,13 +98,13 @@ int32_t TelemetryStart(void)
 	GCSTelemetryStatsConnectQueue(priorityQueue);
     
 	// Start telemetry tasks
-	xTaskCreate(telemetryTxTask, (signed char *)"TelTx", STACK_SIZE_BYTES/4, NULL, TASK_PRIORITY_TX, &telemetryTxTaskHandle);
-	xTaskCreate(telemetryRxTask, (signed char *)"TelRx", STACK_SIZE_BYTES/4, NULL, TASK_PRIORITY_RX, &telemetryRxTaskHandle);
+	telemetryTxTaskHandle = PIOS_Thread_Create(telemetryTxTask, "TelTx", STACK_SIZE_BYTES, NULL, TASK_PRIORITY_TX);
+	telemetryRxTaskHandle = PIOS_Thread_Create(telemetryRxTask, "TelRx", STACK_SIZE_BYTES, NULL, TASK_PRIORITY_RX);
 	TaskMonitorAdd(TASKINFO_RUNNING_TELEMETRYTX, telemetryTxTaskHandle);
 	TaskMonitorAdd(TASKINFO_RUNNING_TELEMETRYRX, telemetryRxTaskHandle);
 
 #if defined(PIOS_TELEM_PRIORITY_QUEUE)
-	xTaskCreate(telemetryTxPriTask, (signed char *)"TelPriTx", STACK_SIZE_BYTES/4, NULL, TASK_PRIORITY_TXPRI, &telemetryTxPriTaskHandle);
+	telemetryTxPriTaskHandle = PIOS_Thread_Create(telemetryTxPriTask, "TelPriTx", STACK_SIZE_BYTES, NULL, TASK_PRIORITY_TXPRI);
 	TaskMonitorAdd(TASKINFO_RUNNING_TELEMETRYTXPRI, telemetryTxPriTaskHandle);
 #endif
 
@@ -124,13 +125,12 @@ int32_t TelemetryInitialize(void)
 	timeOfLastObjectUpdate = 0;
 
 	// Create object queues
-	queue = xQueueCreate(MAX_QUEUE_SIZE, sizeof(UAVObjEvent));
+	queue = PIOS_Queue_Create(MAX_QUEUE_SIZE, sizeof(UAVObjEvent));
 #if defined(PIOS_TELEM_PRIORITY_QUEUE)
-	priorityQueue = xQueueCreate(MAX_QUEUE_SIZE, sizeof(UAVObjEvent));
+	priorityQueue = PIOS_Queue_Create(MAX_QUEUE_SIZE, sizeof(UAVObjEvent));
 #endif
 
 	// Update telemetry settings
-	telemetryPort = PIOS_COM_TELEM_RF;
 	updateSettings();
     
 	// Initialise UAVTalk
@@ -359,7 +359,7 @@ static void telemetryTxTask(void *parameters)
 	// Loop forever
 	while (1) {
 		// Wait for queue message
-		if (xQueueReceive(queue, &ev, portMAX_DELAY) == pdTRUE) {
+		if (PIOS_Queue_Receive(queue, &ev, PIOS_QUEUE_TIMEOUT_MAX) == true) {
 			// Process event
 			processObjEvent(&ev);
 		}
@@ -377,7 +377,7 @@ static void telemetryTxPriTask(void *parameters)
 	// Loop forever
 	while (1) {
 		// Wait for queue message
-		if (xQueueReceive(priorityQueue, &ev, portMAX_DELAY) == pdTRUE) {
+		if (PIOS_Queue_Receive(priorityQueue, &ev, PIOS_QUEUE_TIMEOUT_MAX) == true) {
 			// Process event
 			processObjEvent(&ev);
 		}
@@ -407,7 +407,7 @@ static void telemetryRxTask(void *parameters)
 				}
 			}
 		} else {
-			vTaskDelay(5);
+			PIOS_Thread_Sleep(5);
 		}
 	}
 }
@@ -503,7 +503,7 @@ static void updateTelemetryStats()
 	}
 
 	// Check for connection timeout
-	timeNow = TICKS2MS(xTaskGetTickCount());
+	timeNow = PIOS_Thread_Systime();
 	if (utalkStats.rxObjects > 0) {
 		timeOfLastObjectUpdate = timeNow;
 	}
@@ -563,7 +563,7 @@ static void updateTelemetryStats()
 static void updateSettings()
 {
 	
-	if (telemetryPort) {
+	if (PIOS_COM_TELEM_RF) {
 		// Retrieve settings
 		uint8_t speed;
 		ModuleSettingsTelemetrySpeedGet(&speed);
@@ -571,25 +571,25 @@ static void updateSettings()
 		// Set port speed
 		switch (speed) {
 		case MODULESETTINGS_TELEMETRYSPEED_2400:
-			PIOS_COM_ChangeBaud(telemetryPort, 2400);
+			PIOS_COM_ChangeBaud(PIOS_COM_TELEM_RF, 2400);
 			break;
 		case MODULESETTINGS_TELEMETRYSPEED_4800:
-			PIOS_COM_ChangeBaud(telemetryPort, 4800);
+			PIOS_COM_ChangeBaud(PIOS_COM_TELEM_RF, 4800);
 			break;
 		case MODULESETTINGS_TELEMETRYSPEED_9600:
-			PIOS_COM_ChangeBaud(telemetryPort, 9600);
+			PIOS_COM_ChangeBaud(PIOS_COM_TELEM_RF, 9600);
 			break;
 		case MODULESETTINGS_TELEMETRYSPEED_19200:
-			PIOS_COM_ChangeBaud(telemetryPort, 19200);
+			PIOS_COM_ChangeBaud(PIOS_COM_TELEM_RF, 19200);
 			break;
 		case MODULESETTINGS_TELEMETRYSPEED_38400:
-			PIOS_COM_ChangeBaud(telemetryPort, 38400);
+			PIOS_COM_ChangeBaud(PIOS_COM_TELEM_RF, 38400);
 			break;
 		case MODULESETTINGS_TELEMETRYSPEED_57600:
-			PIOS_COM_ChangeBaud(telemetryPort, 57600);
+			PIOS_COM_ChangeBaud(PIOS_COM_TELEM_RF, 57600);
 			break;
 		case MODULESETTINGS_TELEMETRYSPEED_115200:
-			PIOS_COM_ChangeBaud(telemetryPort, 115200);
+			PIOS_COM_ChangeBaud(PIOS_COM_TELEM_RF, 115200);
 			break;
 		}
 	}
@@ -604,8 +604,8 @@ static uintptr_t getComPort() {
 		return PIOS_COM_TELEM_USB;
 	else
 #endif /* PIOS_INCLUDE_USB */
-		if ( PIOS_COM_Available(telemetryPort) )
-			return telemetryPort;
+		if ( PIOS_COM_Available(PIOS_COM_TELEM_RF) )
+			return PIOS_COM_TELEM_RF;
 		else
 			return 0;
 }
@@ -624,12 +624,12 @@ static void session_managing_updated(UAVObjEvent * ev)
 			sessionManaging.NumberOfObjects = UAVObjCount();
 			sessionManaging.ObjectOfInterestIndex = 0;
 			pausePeriodicUpdates = true;
-			pausePeriodicUpdatesTime = TICKS2MS(xTaskGetTickCount());
+			pausePeriodicUpdatesTime = PIOS_Thread_Systime();
 		} else if (sessionManaging.ObjectOfInterestIndex == 0xFF) {
 			pausePeriodicUpdates = false;
 		} else if (sessionManaging.ObjectOfInterestIndex == 0xFE) {
 			pausePeriodicUpdates = true;
-			pausePeriodicUpdatesTime = TICKS2MS(xTaskGetTickCount());
+			pausePeriodicUpdatesTime = PIOS_Thread_Systime();
 		} else {
 			uint8_t index = sessionManaging.ObjectOfInterestIndex;
 			sessionManaging.ObjectID = UAVObjIDByIndex(index);
@@ -664,7 +664,7 @@ static void update_object_instances(uint32_t obj_id, uint32_t inst_id)
 static void check_pause_periodic_updates_timeout()
 {
 	uint32_t timeNow;
-	timeNow = TICKS2MS(xTaskGetTickCount());
+	timeNow = PIOS_Thread_Systime();
 	if ((timeNow - pausePeriodicUpdatesTime) > PAUSE_PERIODIC_UPDATE_TIMEOUT) {
 		pausePeriodicUpdates = false;
 	}

@@ -88,14 +88,13 @@ plugin_modelview.depends += plugin_uavobjects
 SUBDIRS += plugin_modelview
 }
 
-# Notify gadget NEEDS PHONON UPGRADED TO QT5
-#!disable_notify_plugin {
-#    plugin_notify.subdir = notify
-#    plugin_notify.depends = plugin_coreplugin
-#    plugin_notify.depends += plugin_uavobjects
-#    plugin_notify.depends += plugin_uavtalk
-#    SUBDIRS += plugin_notify
-#}
+!disable_notify_plugin {
+    plugin_notify.subdir = notify
+    plugin_notify.depends = plugin_coreplugin
+    plugin_notify.depends += plugin_uavobjects
+    plugin_notify.depends += plugin_uavtalk
+    SUBDIRS += plugin_notify
+}
 
 # Uploader gadget
 plugin_uploader.subdir = uploader
@@ -141,13 +140,6 @@ plugin_gpsdisplay.depends = plugin_coreplugin
 plugin_gpsdisplay.depends += plugin_uavobjects
 SUBDIRS += plugin_gpsdisplay
 
-# Primary Flight Display (PFD) gadget
-plugin_pfd.subdir = pfd
-plugin_pfd.depends = plugin_coreplugin
-plugin_pfd.depends += plugin_uavobjects
-SUBDIRS += plugin_pfd
-
-
 # QML viewer gadget
 !LIGHTWEIGHT_GCS {
 plugin_qmlview.subdir = qmlview
@@ -162,6 +154,12 @@ plugin_pathplanner.depends = plugin_coreplugin
 plugin_pathplanner.depends += plugin_uavobjects
 SUBDIRS += plugin_pathplanner
 
+# PicoC gadget
+plugin_picoc.subdir = picoc
+plugin_picoc.depends = plugin_coreplugin
+plugin_picoc.depends += plugin_uavobjects
+SUBDIRS += plugin_picoc
+
 # Telemetry Scheduler gadget
 plugin_telemetryscheduler.subdir = telemetryscheduler
 plugin_telemetryscheduler.depends = plugin_coreplugin
@@ -170,12 +168,10 @@ plugin_telemetryscheduler.depends += plugin_uavobjectutil
 SUBDIRS += plugin_telemetryscheduler
 
 # Primary Flight Display (PFD) gadget, QML version
-!LIGHTWEIGHT_GCS {
 plugin_pfdqml.subdir = pfdqml
 plugin_pfdqml.depends = plugin_coreplugin
 plugin_pfdqml.depends += plugin_uavobjects
 SUBDIRS += plugin_pfdqml
-}
 
 # IP connection plugin
 plugin_ipconnection.subdir = ipconnection
@@ -191,15 +187,6 @@ plugin_hitl.depends += plugin_uavtalk
 SUBDIRS += plugin_hitl
 }
 
-#Motion capture interface gadget
-!LIGHTWEIGHT_GCS {
-plugin_mocap.subdir = motioncapture
-plugin_mocap.depends = plugin_coreplugin
-plugin_mocap.depends += plugin_uavobjects
-plugin_mocap.depends += plugin_uavtalk
-SUBDIRS += plugin_mocap
-}
-
 # Export and Import GCS Configuration
 plugin_importexport.subdir = importexport
 plugin_importexport.depends = plugin_coreplugin
@@ -212,6 +199,14 @@ plugin_logging.depends += plugin_uavobjects
 plugin_logging.depends += plugin_uavtalk
 plugin_logging.depends += plugin_scope
 SUBDIRS += plugin_logging
+
+# TauLink monitoring plugin
+plugin_taulink.subdir = taulink
+plugin_taulink.depends = plugin_coreplugin
+plugin_taulink.depends += plugin_uavobjects
+plugin_taulink.depends += plugin_uavtalk
+plugin_taulink.depends += plugin_uavobjectwidgetutils
+SUBDIRS += plugin_taulink
 
 KML { 
     # KML Export plugin
@@ -229,25 +224,7 @@ KML {
     plugin_gcscontrolplugin.depends = plugin_coreplugin
     plugin_gcscontrolplugin.depends += plugin_uavobjects
     SUBDIRS += plugin_gcscontrolplugin
-
-    plugin_gcscontrolwidget.subdir = gcscontrolwidget
-    plugin_gcscontrolwidget.depends = plugin_coreplugin
-    plugin_gcscontrolwidget.depends += plugin_uavobjects
-    plugin_gcscontrolwidget.depends += plugin_gcscontrolplugin
-    SUBDIRS += plugin_gcscontrolwidget
 }
-
-# Antenna tracker
-#plugin_antennatrack.subdir = antennatrack
-#plugin_antennatrack.depends = plugin_coreplugin
-#plugin_antennatrack.depends += plugin_uavobjects
-#SUBDIRS += plugin_antennatrack
-
-# Scope OpenGL Gadget
-#plugin_scopeogl.subdir = scopeogl
-#plugin_scopeogl.depends = plugin_coreplugin
-#plugin_scopeogl.depends += plugin_uavobjects
-#SUBDIRS += plugin_scopeogl
 
 # UAV Object Utility plugin
 plugin_uavobjectutil.subdir = uavobjectutil
@@ -268,7 +245,7 @@ OSG {
 !LIGHTWEIGHT_GCS {
 plugin_magicwaypoint.subdir = magicwaypoint
 plugin_magicwaypoint.depends = plugin_coreplugin
-plugin_magicwaypoint.depends = plugin_uavobjects
+plugin_magicwaypoint.depends += plugin_uavobjects
 SUBDIRS += plugin_magicwaypoint
 }
 
@@ -296,6 +273,14 @@ plugin_setupwizard.depends += plugin_config
 plugin_setupwizard.depends += plugin_uploader
 SUBDIRS += plugin_setupwizard
 
+# RFM22b Wizard plugin
+plugin_rfmbindwizard.subdir = rfmbindwizard
+plugin_rfmbindwizard.depends = plugin_coreplugin
+plugin_rfmbindwizard.depends += plugin_uavobjectutil
+plugin_rfmbindwizard.depends += plugin_config
+plugin_rfmbindwizard.depends += plugin_uploader
+SUBDIRS += plugin_rfmbindwizard
+
 # Setup alarm messaging plugin
 plugin_sysalarmsmessaging.subdir = sysalarmsmessaging
 plugin_sysalarmsmessaging.depends = plugin_coreplugin
@@ -311,25 +296,49 @@ SUBDIRS += plugin_sysalarmsmessaging
 
 # Tau Labs project
 plugin_boards_taulabs.subdir = boards_taulabs
-plugin_boards_taulabs.depends += plugin_coreplugin
+plugin_boards_taulabs.depends = plugin_coreplugin
 plugin_boards_taulabs.depends += plugin_uavobjects
+plugin_boards_taulabs.depends += plugin_uavobjectutil
+plugin_boards_taulabs.depends += plugin_uavobjectwidgetutils
 SUBDIRS += plugin_boards_taulabs
 
 # OpenPilot project
 plugin_boards_openpilot.subdir = boards_openpilot
 plugin_boards_openpilot.depends = plugin_coreplugin
-plugin_boards_openpilot.depends = plugin_uavobjects
-plugin_boards_openpilot.depends = plugin_uavobjectutil
+plugin_boards_openpilot.depends += plugin_uavobjects
+plugin_boards_openpilot.depends += plugin_uavobjectutil
+plugin_boards_openpilot.depends += plugin_uavobjectwidgetutils
+
 SUBDIRS += plugin_boards_openpilot
 
 # Quantec Networks GmbH
 plugin_boards_quantec.subdir = boards_quantec
 plugin_boards_quantec.depends = plugin_coreplugin
-plugin_boards_quantec.depends = plugin_uavobjects
+plugin_boards_quantec.depends += plugin_uavobjects
 SUBDIRS += plugin_boards_quantec
+
+# Naze32
+plugin_boards_naze.subdir = boards_naze
+plugin_boards_naze.depends = plugin_coreplugin
+plugin_boards_naze.depends += plugin_uavobjects
+SUBDIRS += plugin_boards_naze
+
+# Team Black Sheep
+plugin_boards_tbs.subdir = boards_tbs
+plugin_boards_tbs.depends = plugin_coreplugin
+plugin_boards_tbs.depends += plugin_uavobjects
+plugin_boards_tbs.depends += plugin_uavobjectutil
+plugin_boards_tbs.depends += plugin_uavobjectwidgetutils
+SUBDIRS += plugin_boards_tbs
 
 # STM boards
 plugin_boards_stm.subdir = boards_stm
 plugin_boards_stm.depends = plugin_coreplugin
-plugin_boards_stm.depends = plugin_uavobjects
+plugin_boards_stm.depends += plugin_uavobjects
 SUBDIRS += plugin_boards_stm
+
+# AeroQuad AQ32
+plugin_boards_aeroquad.subdir = boards_aeroquad
+plugin_boards_aeroquad.depends = plugin_coreplugin
+plugin_boards_aeroquad.depends += plugin_uavobjects
+SUBDIRS += plugin_boards_aeroquad

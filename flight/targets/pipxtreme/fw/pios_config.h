@@ -52,7 +52,6 @@
 #define PIOS_INCLUDE_USB_HID
 #define PIOS_INCLUDE_USB_CDC
 #define PIOS_INCLUDE_COM
-#define PIOS_INCLUDE_FREERTOS
 #define PIOS_INCLUDE_GPIO
 #define PIOS_INCLUDE_EXTI
 #define PIOS_INCLUDE_RTC
@@ -60,6 +59,9 @@
 #define PIOS_INCLUDE_BL_HELPER
 #define PIOS_INCLUDE_RFM22B
 #define PIOS_INCLUDE_PACKET_HANDLER
+
+#define PIOS_INCLUDE_TARANIS_SPORT
+#define PIOS_INCLUDE_FRSKY_SPORT_TELEMETRY
 
 #define PIOS_INCLUDE_FLASH
 #define PIOS_INCLUDE_FLASH_INTERNAL
@@ -89,7 +91,7 @@
 #define PIOS_SYSTEM_STACK_SIZE          460
 #define PIOS_STABILIZATION_STACK_SIZE   524
 #define PIOS_TELEM_STACK_SIZE           500
-#define PIOS_EVENTDISPATCHER_STACK_SIZE 130
+#define PIOS_EVENTDISPATCHER_STACK_SIZE 520
 #define IDLE_COUNTS_PER_SEC_AT_NO_LOAD 1995998
 
 // This can't be too high to stop eventdispatcher thread overflowing
@@ -97,6 +99,11 @@
 
 /* PIOS Initcall infrastructure */
 #define PIOS_INCLUDE_INITCALL
+
+#define PIOS_INCLUDE_DEBUG_CONSOLE
+
+#define PIOS_NO_TELEM_ON_RF
+#define PIOS_NO_ALARMS
 
 /* Turn on debugging signals on the telemetry port */
 //#define PIOS_RFM22B_DEBUG_ON_TELEM

@@ -3,6 +3,7 @@
  *
  * @file       configinputwidget.cpp
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
+ * @author     dRonin, http://dronin.org Copyright (C) 2015
  * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013
  * @addtogroup GCSPlugins GCS Plugins
  * @{
@@ -47,6 +48,9 @@
 
 #include "actuatorcommand.h"
 
+// The fraction of range to place the neutral position in
+#define THROTTLE_NEUTRAL_FRACTION 0.02
+
 #define ACCESS_MIN_MOVE -3
 #define ACCESS_MAX_MOVE 3
 #define STICK_MIN_MOVE -8
@@ -78,16 +82,32 @@ ConfigInputWidget::ConfigInputWidget(QWidget *parent) : ConfigTaskWidget(parent)
     foreach (QString name, manualSettingsObj->getField("ChannelNumber")->getElementNames())
     {
         Q_ASSERT(index < ManualControlSettings::CHANNELGROUPS_NUMELEM);
-        inputChannelForm * inpForm=new inputChannelForm(this,index==0);
+        inputChannelForm * inpForm=new inputChannelForm(this,index==0,true);
         m_config->channelSettings->layout()->addWidget(inpForm); //Add the row to the UI
         inpForm->setName(name);
         addUAVObjectToWidgetRelation("ManualControlSettings","ChannelGroups",inpForm->ui->channelGroup,index);
         addUAVObjectToWidgetRelation("ManualControlSettings","ChannelNumber",inpForm->ui->channelNumber,index);
         addUAVObjectToWidgetRelation("ManualControlSettings","ChannelMin",inpForm->ui->channelMin,index);
-        addUAVObjectToWidgetRelation("ManualControlSettings","ChannelNeutral",inpForm->ui->channelNeutral,index);
         addUAVObjectToWidgetRelation("ManualControlSettings","ChannelMax",inpForm->ui->channelMax,index);
+        addUAVObjectToWidgetRelation("ManualControlSettings","ChannelNeutral",inpForm->ui->channelNeutral,index);
+
+        int index2 = manualCommandObj->getField("Channel")->getElementNames().indexOf(name);
+        if (index2 >= 0) {
+            addUAVObjectToWidgetRelation("ManualControlCommand", "Channel", inpForm->ui->channelCurrent, index2);
+        }
         ++index;
     }
+
+    // RSSI
+    inputChannelForm * inpForm = new inputChannelForm(this, false, false, inputChannelForm::CHANNELFUNC_RSSI);
+    m_config->channelSettings->layout()->addWidget(inpForm);
+    QString name = "RSSI";
+    inpForm->setName(name);
+    addUAVObjectToWidgetRelation("ManualControlSettings","RssiType",inpForm->ui->channelGroup,0);
+    addUAVObjectToWidgetRelation("ManualControlSettings","RssiChannelNumber",inpForm->ui->channelNumber,0);
+    addUAVObjectToWidgetRelation("ManualControlSettings","RssiMin",inpForm->ui->channelMin,0);
+    addUAVObjectToWidgetRelation("ManualControlSettings","RssiMax",inpForm->ui->channelMax,0);
+    addUAVObjectToWidgetRelation("ManualControlCommand", "RawRssi", inpForm->ui->channelCurrent, 0);
 
     addUAVObjectToWidgetRelation("ManualControlSettings", "Deadband", m_config->deadband, 0, 0.01f);
 
@@ -118,6 +138,8 @@ ConfigInputWidget::ConfigInputWidget(QWidget *parent) : ConfigTaskWidget(parent)
     addUAVObjectToWidgetRelation("ManualControlSettings","Stabilization2Settings",m_config->fmsSsPos2Yaw,"Yaw");
     addUAVObjectToWidgetRelation("ManualControlSettings","Stabilization3Settings",m_config->fmsSsPos3Yaw,"Yaw");
 
+    // connect this before the widgets are populated to ensure it always fires
+    connect(m_config->armControl, SIGNAL(currentTextChanged(QString)), this, SLOT(checkArmingConfig(QString)));
     addUAVObjectToWidgetRelation("ManualControlSettings","Arming",m_config->armControl);
     addUAVObjectToWidgetRelation("ManualControlSettings","ArmedTimeout",m_config->armTimeout,0,1000);
     connect( ManualControlCommand::GetInstance(getObjectManager()),SIGNAL(objectUpdated(UAVObject*)),this,SLOT(moveFMSlider()));
@@ -133,7 +155,6 @@ ConfigInputWidget::ConfigInputWidget(QWidget *parent) : ConfigTaskWidget(parent)
     m_config->graphicsView->setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
     m_renderer = new QSvgRenderer();
     QGraphicsScene *l_scene = m_config->graphicsView->scene();
-    m_config->graphicsView->setBackgroundBrush(QBrush(Utils::StyleHelper::baseColor()));
     if (QFile::exists(":/configgadget/images/TX2.svg") && m_renderer->load(QString(":/configgadget/images/TX2.svg")) && m_renderer->isValid())
     {
         l_scene->clear(); // Deletes all items contained in the scene as well.
@@ -263,6 +284,7 @@ ConfigInputWidget::ConfigInputWidget(QWidget *parent) : ConfigTaskWidget(parent)
         m_txAccess2->setTransform(m_txAccess2Orig,true);
     }
     m_config->graphicsView->fitInView(m_txMainBody, Qt::KeepAspectRatio );
+    m_config->graphicsView->setStyleSheet("background: transparent");
     animate=new QTimer(this);
     connect(animate,SIGNAL(timeout()),this,SLOT(moveTxControls()));
 
@@ -315,7 +337,7 @@ void ConfigInputWidget::resizeEvent(QResizeEvent *event)
 
 void ConfigInputWidget::openHelp()
 {
-    QDesktopServices::openUrl( QUrl("http://wiki.taulabs.org/OnlineHelp:-Input-Configuration", QUrl::StrictMode) );
+    QDesktopServices::openUrl( QUrl("https://github.com/TauLabs/TauLabs/wiki/OnlineHelp:-Input-Configuration", QUrl::StrictMode) );
 }
 
 void ConfigInputWidget::goToWizard()
@@ -409,6 +431,9 @@ void ConfigInputWidget::wzNext()
         wizardSetUpStep(wizardIdentifyInverted);
         break;
     case wizardIdentifyInverted:
+        wizardSetUpStep(wizardVerifyFailsafe);
+        break;
+    case wizardVerifyFailsafe:
         wizardSetUpStep(wizardFinish);
         break;
     case wizardFinish:
@@ -453,8 +478,11 @@ void ConfigInputWidget::wzBack()
     case wizardIdentifyInverted:
         wizardSetUpStep(wizardIdentifyLimits);
         break;
-    case wizardFinish:
+    case wizardVerifyFailsafe:
         wizardSetUpStep(wizardIdentifyInverted);
+        break;
+    case wizardFinish:
+        wizardSetUpStep(wizardVerifyFailsafe);
         break;
     default:
         Q_ASSERT(0);
@@ -495,6 +523,8 @@ void ConfigInputWidget::wizardSetUpStep(enum wizardSteps step)
                                      "You can press 'back' at any time to return to the previous screeen or press 'Cancel' to quit the wizard.\n"));
         m_config->stackedWidget->setCurrentIndex(1);
         m_config->wzBack->setEnabled(false);
+        m_config->wzNext->setEnabled(true);
+        m_config->bypassFailsafeGroup->setVisible(false);
         break;
     case wizardChooseMode:
     {
@@ -571,7 +601,6 @@ void ConfigInputWidget::wizardSetUpStep(enum wizardSteps step)
         }
         connect(manualCommandObj, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(identifyLimits()));
         connect(manualCommandObj, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(moveSticks()));
-        connect(flightStatusObj, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(moveSticks()));
         connect(accessoryDesiredObj0, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(moveSticks()));
     }
         break;
@@ -599,10 +628,23 @@ void ConfigInputWidget::wizardSetUpStep(enum wizardSteps step)
         m_config->wzText->setText(QString(tr("Please check the picture below and correct all the sticks which show an inverted movement, press next when ready.")));
         fastMdata();
         break;
+    case wizardVerifyFailsafe:
+        restoreMdata(); // make sure other updates do not clobber failsafe
+        dimOtherControls(false);
+        setTxMovement(nothing);
+        extraWidgets.clear();
+        flightStatusObj->requestUpdate();
+        detectFailsafe();
+        failsafeDetection = FS_AWAITING_CONNECTION;
+        connect(flightStatusObj, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(detectFailsafe()));
+        m_config->wzNext->setEnabled(false);
+        m_config->graphicsView->setVisible(false);
+        m_config->bypassFailsafeGroup->setVisible(true);
+        connect(m_config->cbBypassFailsafe,SIGNAL(toggled(bool)), this, SLOT(detectFailsafe()));
+        break;
     case wizardFinish:
         dimOtherControls(false);
         connect(manualCommandObj, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(moveSticks()));
-        connect(flightStatusObj, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(moveSticks()));
         connect(accessoryDesiredObj0, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(moveSticks()));
         m_config->wzText->setText(QString(tr("You have completed this wizard, please check below if the picture mimics your sticks movement.\n"
                                              "These new settings aren't saved to the board yet, after pressing next you will go to the Arming Settings "
@@ -612,7 +654,7 @@ void ConfigInputWidget::wizardSetUpStep(enum wizardSteps step)
         manualSettingsData.ChannelNeutral[ManualControlSettings::CHANNELNEUTRAL_THROTTLE]=
                 manualSettingsData.ChannelMin[ManualControlSettings::CHANNELMIN_THROTTLE]+
                 ((manualSettingsData.ChannelMax[ManualControlSettings::CHANNELMAX_THROTTLE]-
-                  manualSettingsData.ChannelMin[ManualControlSettings::CHANNELMIN_THROTTLE])*0.02);
+                  manualSettingsData.ChannelMin[ManualControlSettings::CHANNELMIN_THROTTLE])*THROTTLE_NEUTRAL_FRACTION);
         if((abs(manualSettingsData.ChannelMax[ManualControlSettings::CHANNELMAX_FLIGHTMODE]-manualSettingsData.ChannelNeutral[ManualControlSettings::CHANNELNEUTRAL_FLIGHTMODE])<100) ||
                 (abs(manualSettingsData.ChannelMin[ManualControlSettings::CHANNELMIN_FLIGHTMODE]-manualSettingsData.ChannelNeutral[ManualControlSettings::CHANNELNEUTRAL_FLIGHTMODE])<100))
         {
@@ -665,15 +707,22 @@ void ConfigInputWidget::wizardTearDownStep(enum wizardSteps step)
         manualSettingsData=manualSettingsObj->getData();
         for(unsigned int i=0;i<ManualControlCommand::CHANNEL_NUMELEM;++i)
         {
-            manualSettingsData.ChannelNeutral[i]=manualCommandData.Channel[i];
+            manualSettingsData.ChannelNeutral[i] = manualCommandData.Channel[i];
         }
+
+        // If user skipped flight mode then force the number of flight modes to 1
+        // for valid connection
+        if (manualSettingsData.ChannelGroups[ManualControlSettings::CHANNELMIN_FLIGHTMODE] ==
+                ManualControlSettings::CHANNELGROUPS_NONE) {
+            manualSettingsData.FlightModeNumber = 1;
+        }
+
         manualSettingsObj->setData(manualSettingsData);
         setTxMovement(nothing);
         break;
     case wizardIdentifyLimits:
         disconnect(manualCommandObj, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(identifyLimits()));
         disconnect(manualCommandObj, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(moveSticks()));
-        disconnect(flightStatusObj, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(moveSticks()));
         disconnect(accessoryDesiredObj0, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(moveSticks()));
         manualSettingsObj->setData(manualSettingsData);
         setTxMovement(nothing);
@@ -692,11 +741,18 @@ void ConfigInputWidget::wizardTearDownStep(enum wizardSteps step)
         extraWidgets.clear();
         disconnect(manualCommandObj, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(moveSticks()));
         break;
+    case wizardVerifyFailsafe:
+        dimOtherControls(false);
+        extraWidgets.clear();
+        disconnect(flightStatusObj, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(detectFailsafe()));
+        m_config->graphicsView->setVisible(true);
+        m_config->bypassFailsafeGroup->setVisible(false);
+        disconnect(m_config->cbBypassFailsafe,SIGNAL(toggled(bool)), this, SLOT(detectFailsafe()));
+        break;
     case wizardFinish:
         dimOtherControls(false);
         setTxMovement(nothing);
         disconnect(manualCommandObj, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(moveSticks()));
-        disconnect(flightStatusObj, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(moveSticks()));
         disconnect(accessoryDesiredObj0, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(moveSticks()));
         restoreMdata();
         break;
@@ -724,7 +780,6 @@ void ConfigInputWidget::fastMdata()
 
     // Iterate over list of UAVObjects, configuring all dynamic data metadata objects.
     UAVObjectManager *objManager = getObjectManager();
-    QMap<QString, UAVObject::Metadata> metaDataList;
     QVector< QVector<UAVDataObject*> > objList = objManager->getDataObjectsVector();
     foreach (QVector<UAVDataObject*> list, objList) {
         foreach (UAVDataObject* obj, list) {
@@ -734,10 +789,10 @@ void ConfigInputWidget::fastMdata()
 
                 switch(obj->getObjID()){
                     case ReceiverActivity::OBJID:
+                    case FlightStatus::OBJID:
                         UAVObject::SetFlightTelemetryUpdateMode(mdata, UAVObject::UPDATEMODE_ONCHANGE);
                         break;
                     case AccessoryDesired::OBJID:
-                    case FlightStatus::OBJID:
                     case ManualControlCommand::OBJID:
                         UAVObject::SetFlightTelemetryUpdateMode(mdata, UAVObject::UPDATEMODE_PERIODIC);
                         mdata.flightTelemetryUpdatePeriod = fastUpdate;
@@ -753,14 +808,11 @@ void ConfigInputWidget::fastMdata()
                         break;
                 }
 
-                metaDataList.insert(obj->getName(), mdata);
+                // Set the metadata
+                obj->setMetadata(mdata);
             }
         }
     }
-
-    // Set new metadata
-    utilMngr->setAllNonSettingsMetadata(metaDataList);
-
 
 }
 
@@ -769,8 +821,10 @@ void ConfigInputWidget::fastMdata()
   */
 void ConfigInputWidget::restoreMdata()
 {
-    UAVObjectUtilManager* utilMngr = getObjectUtilManager();
-    utilMngr->setAllNonSettingsMetadata(originalMetaData);
+    foreach (QString objName, originalMetaData.keys()) {
+        UAVObject *obj = getObjectManager()->getObject(objName);
+        obj->setMetadata(originalMetaData.value(objName));
+    }
     originalMetaData.clear();
 }
 
@@ -916,6 +970,14 @@ void ConfigInputWidget::identifyLimits()
                 manualSettingsData.ChannelMax[i]=manualCommandData.Channel[i];
             if(manualSettingsData.ChannelMin[i]<manualCommandData.Channel[i])
                 manualSettingsData.ChannelMin[i]=manualCommandData.Channel[i];
+        }
+
+        if (i == ManualControlSettings::CHANNELNEUTRAL_THROTTLE) {
+            // Keep the throttle neutral position near the minimum value so that
+            // the stick visualization keeps working consistently (it expects this
+            // ratio between + and - range.
+            manualSettingsData.ChannelNeutral[i] = manualSettingsData.ChannelMin[i] +
+                    (manualSettingsData.ChannelMax[i] - manualSettingsData.ChannelMin[i]) * THROTTLE_NEUTRAL_FRACTION;
         }
     }
     manualSettingsObj->setData(manualSettingsData);
@@ -1255,26 +1317,68 @@ void ConfigInputWidget::moveTxControls()
     }
 }
 
+/**
+ * @brief ConfigInputWidget::detectFailsafe
+ * Detect that the FlightStatus object indicates a Failsafe condition
+ */
+void ConfigInputWidget::detectFailsafe()
+{
+    FlightStatus::DataFields flightStatusData = flightStatusObj->getData();
+    switch (failsafeDetection)
+    {
+    case FS_AWAITING_CONNECTION:
+        if (flightStatusData.ControlSource == FlightStatus::CONTROLSOURCE_TRANSMITTER) {
+            m_config->wzText->setText(QString(tr("To verify that the failsafe mode on your receiver is safe, please turn off your transmitter now.\n")));
+            failsafeDetection = FS_AWAITING_FAILSAFE;    // Now wait for it to go away
+        } else {
+            m_config->wzText->setText(QString(tr("Unable to detect transmitter to verify failsafe. Please ensure it is turned on.\n")));
+        }
+        break;
+    case FS_AWAITING_FAILSAFE:
+        if (flightStatusData.ControlSource == FlightStatus::CONTROLSOURCE_FAILSAFE) {
+            m_config->wzText->setText(QString(tr("Failsafe mode detected. Please turn on your transmitter again.\n")));
+            failsafeDetection = FS_AWAITING_RECONNECT;    // Now wait for it to go away
+        }
+        break;
+    case FS_AWAITING_RECONNECT:
+        if (flightStatusData.ControlSource == FlightStatus::CONTROLSOURCE_TRANSMITTER) {
+            m_config->wzText->setText(QString(tr("Congratulations. Failsafe detection appears to be working reliably.\n")));
+            m_config->wzNext->setEnabled(true);
+        }
+        break;
+    }
+    if (m_config->cbBypassFailsafe->checkState()) {
+        m_config->wzText->setText(QString(tr("You are selecting to bypass failsafe detection. If this is not working, then the flight controller is likely to fly away. Please check on the forums how to configure this properly.\n")));
+        m_config->wzNext->setEnabled(true);
+    }
+}
+
 void ConfigInputWidget::moveSticks()
 {
     QTransform trans;
     manualCommandData = manualCommandObj->getData();
-    flightStatusData=flightStatusObj->getData();
     accessoryDesiredData0=accessoryDesiredObj0->getData();
     accessoryDesiredData1=accessoryDesiredObj1->getData();
     accessoryDesiredData2=accessoryDesiredObj2->getData();
 
+    // 0 for throttle is THROTTLE_NEUTRAL_FRACTION of the total range
+    // here we map it from [-1,0,1] -> [0,THROTTLE_NEUTRAL_FRACTION,1]
+    double throttlePosition = manualCommandData.Throttle < 0 ?
+                0 + THROTTLE_NEUTRAL_FRACTION * (1 - manualCommandData.Throttle) :
+                THROTTLE_NEUTRAL_FRACTION + manualCommandData.Throttle * (1-THROTTLE_NEUTRAL_FRACTION);
+    // now map [0,1] -> [-1,1] for consistence with other channels
+    throttlePosition = 2 * throttlePosition - 1;
     if(transmitterMode == mode2)
     {
         trans = m_txLeftStickOrig;
-        m_txLeftStick->setTransform(trans.translate(manualCommandData.Yaw * STICK_MAX_MOVE*10, -manualCommandData.Throttle * STICK_MAX_MOVE * 10), false);
+        m_txLeftStick->setTransform(trans.translate(manualCommandData.Yaw * STICK_MAX_MOVE*10, -throttlePosition * STICK_MAX_MOVE * 10), false);
         trans = m_txRightStickOrig;
         m_txRightStick->setTransform(trans.translate(manualCommandData.Roll * STICK_MAX_MOVE * 10, manualCommandData.Pitch * STICK_MAX_MOVE * 10), false);
     }
     else
     {
         trans = m_txRightStickOrig;
-        m_txRightStick->setTransform(trans.translate(manualCommandData.Roll * STICK_MAX_MOVE * 10, -manualCommandData.Throttle * STICK_MAX_MOVE * 10), false);
+        m_txRightStick->setTransform(trans.translate(manualCommandData.Roll * STICK_MAX_MOVE * 10, -throttlePosition * STICK_MAX_MOVE * 10), false);
         trans = m_txLeftStickOrig;
         m_txLeftStick->setTransform(trans.translate(manualCommandData.Yaw * STICK_MAX_MOVE * 10, manualCommandData.Pitch * STICK_MAX_MOVE*10), false);
     }
@@ -1352,6 +1456,13 @@ void ConfigInputWidget::invertControls()
                 aux=manualSettingsData.ChannelMax[index];
                 manualSettingsData.ChannelMax[index]=manualSettingsData.ChannelMin[index];
                 manualSettingsData.ChannelMin[index]=aux;
+                if (index == ManualControlSettings::CHANNELNEUTRAL_THROTTLE) {
+                    // Keep the throttle neutral position near the minimum value so that
+                    // the stick visualization keeps working consistently (it expects this
+                    // ratio between + and - range.
+                    manualSettingsData.ChannelNeutral[index] = manualSettingsData.ChannelMin[index] +
+                            (manualSettingsData.ChannelMax[index] - manualSettingsData.ChannelMin[index]) * THROTTLE_NEUTRAL_FRACTION;
+                }
             }
         }
     }
@@ -1520,19 +1631,31 @@ void ConfigInputWidget::simpleCalibration(bool enable)
         for (unsigned int i = 0; i < ManualControlCommand::CHANNEL_NUMELEM; i++)
             manualSettingsData.ChannelNeutral[i] = manualCommandData.Channel[i];
 
-        // Force flight mode neutral to middle
+        // Force switches to middle
         manualSettingsData.ChannelNeutral[ManualControlSettings::CHANNELNUMBER_FLIGHTMODE] =
                 (manualSettingsData.ChannelMax[ManualControlSettings::CHANNELNUMBER_FLIGHTMODE] +
                 manualSettingsData.ChannelMin[ManualControlSettings::CHANNELNUMBER_FLIGHTMODE]) / 2;
 
+        manualSettingsData.ChannelNeutral[ManualControlSettings::CHANNELNUMBER_ARMING] =
+                (manualSettingsData.ChannelMax[ManualControlSettings::CHANNELNUMBER_ARMING] +
+                manualSettingsData.ChannelMin[ManualControlSettings::CHANNELNUMBER_ARMING]) / 2;
+
         // Force throttle to be near min
-        manualSettingsData.ChannelNeutral[ManualControlSettings::CHANNELNEUTRAL_THROTTLE]=
-                manualSettingsData.ChannelMin[ManualControlSettings::CHANNELMIN_THROTTLE]+
-                ((manualSettingsData.ChannelMax[ManualControlSettings::CHANNELMAX_THROTTLE]-
-                  manualSettingsData.ChannelMin[ManualControlSettings::CHANNELMIN_THROTTLE])*0.02);
+        manualSettingsData.ChannelNeutral[ManualControlSettings::CHANNELNEUTRAL_THROTTLE] =
+                manualSettingsData.ChannelMin[ManualControlSettings::CHANNELMIN_THROTTLE] +
+                (manualSettingsData.ChannelMax[ManualControlSettings::CHANNELMAX_THROTTLE] -
+                  manualSettingsData.ChannelMin[ManualControlSettings::CHANNELMIN_THROTTLE]) * THROTTLE_NEUTRAL_FRACTION;
 
         manualSettingsObj->setData(manualSettingsData);
 
         disconnect(manualCommandObj, SIGNAL(objectUnpacked(UAVObject*)), this, SLOT(updateCalibration()));
     }
+}
+
+void ConfigInputWidget::checkArmingConfig(QString option)
+{
+    if(!m_config->armControl->isEnabled() || option.contains("+Throttle") || option == "Always Disarmed")
+        m_config->lblThrottleCheckWarn->hide();
+    else
+        m_config->lblThrottleCheckWarn->show();
 }

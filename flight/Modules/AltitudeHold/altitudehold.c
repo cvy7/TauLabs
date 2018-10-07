@@ -48,20 +48,23 @@
 #include "attitudeactual.h"
 #include "altitudeholdsettings.h"
 #include "altitudeholddesired.h"
+#include "altitudeholdstate.h"
 #include "flightstatus.h"
 #include "stabilizationdesired.h"
 #include "positionactual.h"
 #include "velocityactual.h"
 #include "modulesettings.h"
+#include "pios_thread.h"
+#include "pios_queue.h"
 
 // Private constants
 #define MAX_QUEUE_SIZE 4
-#define STACK_SIZE_BYTES 540
-#define TASK_PRIORITY (tskIDLE_PRIORITY+1)
+#define STACK_SIZE_BYTES 648
+#define TASK_PRIORITY PIOS_THREAD_PRIO_LOW
 
 // Private variables
-static xTaskHandle altitudeHoldTaskHandle;
-static xQueueHandle queue;
+static struct pios_thread *altitudeHoldTaskHandle;
+static struct pios_queue *queue;
 static bool module_enabled;
 
 // Private functions
@@ -75,7 +78,7 @@ int32_t AltitudeHoldStart()
 {
 	// Start main task if it is enabled
 	if (module_enabled) {
-		xTaskCreate(altitudeHoldTask, (signed char *)"AltitudeHold", STACK_SIZE_BYTES/4, NULL, TASK_PRIORITY, &altitudeHoldTaskHandle);
+		altitudeHoldTaskHandle = PIOS_Thread_Create(altitudeHoldTask, "AltitudeHold", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
 		TaskMonitorAdd(TASKINFO_RUNNING_ALTITUDEHOLD, altitudeHoldTaskHandle);
 		return 0;
 	}
@@ -104,9 +107,10 @@ int32_t AltitudeHoldInitialize()
 	if(module_enabled) {
 		AltitudeHoldSettingsInitialize();
 		AltitudeHoldDesiredInitialize();
+		AltitudeHoldStateInitialize();
 
 		// Create object queue
-		queue = xQueueCreate(MAX_QUEUE_SIZE, sizeof(UAVObjEvent));
+		queue = PIOS_Queue_Create(MAX_QUEUE_SIZE, sizeof(UAVObjEvent));
 
 		return 0;
 	}
@@ -146,7 +150,7 @@ static void altitudeHoldTask(void *parameters)
 	uint32_t timeout = dt_ms;
 
 	while (1) {
-		if ( xQueueReceive(queue, &ev, MS2TICKS(timeout)) != pdTRUE ) {
+		if (PIOS_Queue_Receive(queue, &ev, timeout) != true) {
 
 		} else if (ev.obj == FlightStatusHandle()) {
 
@@ -156,8 +160,14 @@ static void altitudeHoldTask(void *parameters)
 			if (flight_mode == FLIGHTSTATUS_FLIGHTMODE_ALTITUDEHOLD && !engaged) {
 				// Copy the current throttle as a starting point for integral
 				StabilizationDesiredThrottleGet(&velocity_pid.iAccumulator);
-				velocity_pid.iAccumulator *= 1000.0f; // pid library scales up accumulator by 1000
 				engaged = true;
+
+				// Make sure this uses a valid AltitudeHoldDesired. No delay is really required here
+				// because ManualControl sets AltitudeHoldDesired first before the FlightStatus, but
+				// this is just to be conservative at 1ms when engaging will not bother the pilot.
+				PIOS_Thread_Sleep(1);
+				AltitudeHoldDesiredGet(&altitudeHoldDesired);
+
 			} else if (flight_mode != FLIGHTSTATUS_FLIGHTMODE_ALTITUDEHOLD)
 				engaged = false;
 
@@ -172,6 +182,12 @@ static void altitudeHoldTask(void *parameters)
 			pid_configure(&velocity_pid, altitudeHoldSettings.VelocityKp,
 				          altitudeHoldSettings.VelocityKi, 0.0f, 1.0f);
 		}
+
+		bool landing = altitudeHoldDesired.Land == ALTITUDEHOLDDESIRED_LAND_TRUE;
+
+		// For landing mode allow throttle to go negative to allow the integrals
+		// to stop winding up
+		const float min_throttle = landing ? -0.1f : 0.0f;
 
 		// When engaged compute altitude controller output
 		if (engaged) {
@@ -189,10 +205,15 @@ static void altitudeHoldTask(void *parameters)
 			float velocity_desired = altitude_error * altitudeHoldSettings.PositionKp + altitudeHoldDesired.ClimbRate;
 			float throttle_desired = pid_apply_antiwindup(&velocity_pid, 
 			                    velocity_desired - velocity_z,
-			                    0, 1.0f, // positive limits since this is throttle
+			                    min_throttle, 1.0f, // positive limits since this is throttle
 			                    dt_s);
 
-			if (altitudeHoldSettings.AttitudeComp == ALTITUDEHOLDSETTINGS_ATTITUDECOMP_TRUE) {
+			AltitudeHoldStateData altitudeHoldState;
+			altitudeHoldState.VelocityDesired = velocity_desired;
+			altitudeHoldState.Integral = velocity_pid.iAccumulator;
+			altitudeHoldState.AngleGain = 1.0f;
+
+			if (altitudeHoldSettings.AttitudeComp > 0) {
 				// Throttle desired is at this point the mount desired in the up direction, we can
 				// account for the attitude if desired
 				AttitudeActualData attitudeActual;
@@ -205,21 +226,40 @@ static void altitudeHoldTask(void *parameters)
 				                 attitudeActual.q3 * attitudeActual.q3 +
 				                 attitudeActual.q4 * attitudeActual.q4;
 
+				// Add ability to scale up the amount of compensation to achieve
+				// level forward flight
+				fraction = powf(fraction, (float) altitudeHoldSettings.AttitudeComp / 100.0f);
+
 				// Dividing by the fraction remaining in the vertical projection will
 				// attempt to compensate for tilt. This acts like the thrust is linear
 				// with the output which isn't really true. If the fraction is starting
 				// to go negative we are inverted and should shut off throttle
 				throttle_desired = (fraction > 0.1f) ? (throttle_desired / fraction) : 0.0f;
+
+				altitudeHoldState.AngleGain = 1.0f / fraction;
 			}
 
+			altitudeHoldState.Throttle = throttle_desired;
+			AltitudeHoldStateSet(&altitudeHoldState);
+
 			StabilizationDesiredGet(&stabilizationDesired);
-			stabilizationDesired.Throttle = bound_min_max(throttle_desired, 0.0f, 1.0f);
-			stabilizationDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_ROLL] = STABILIZATIONDESIRED_STABILIZATIONMODE_ATTITUDE;
-			stabilizationDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_PITCH] = STABILIZATIONDESIRED_STABILIZATIONMODE_ATTITUDE;
-			stabilizationDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_YAW] = STABILIZATIONDESIRED_STABILIZATIONMODE_AXISLOCK;
-			stabilizationDesired.Roll = altitudeHoldDesired.Roll;
-			stabilizationDesired.Pitch = altitudeHoldDesired.Pitch;
-			stabilizationDesired.Yaw = altitudeHoldDesired.Yaw;
+			stabilizationDesired.Throttle = bound_min_max(throttle_desired, min_throttle, 1.0f);
+
+			if (landing) {
+				stabilizationDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_ROLL] = STABILIZATIONDESIRED_STABILIZATIONMODE_ATTITUDE;
+				stabilizationDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_PITCH] = STABILIZATIONDESIRED_STABILIZATIONMODE_ATTITUDE;
+				stabilizationDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_YAW] = STABILIZATIONDESIRED_STABILIZATIONMODE_AXISLOCK;
+				stabilizationDesired.Roll = 0;
+				stabilizationDesired.Pitch = 0;
+				stabilizationDesired.Yaw = 0;
+			} else {
+				stabilizationDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_ROLL] = STABILIZATIONDESIRED_STABILIZATIONMODE_ATTITUDE;
+				stabilizationDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_PITCH] = STABILIZATIONDESIRED_STABILIZATIONMODE_ATTITUDE;
+				stabilizationDesired.StabilizationMode[STABILIZATIONDESIRED_STABILIZATIONMODE_YAW] = STABILIZATIONDESIRED_STABILIZATIONMODE_AXISLOCK;
+				stabilizationDesired.Roll = altitudeHoldDesired.Roll;
+				stabilizationDesired.Pitch = altitudeHoldDesired.Pitch;
+				stabilizationDesired.Yaw = altitudeHoldDesired.Yaw;
+			}
 			StabilizationDesiredSet(&stabilizationDesired);
 		}
 

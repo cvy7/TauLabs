@@ -1,11 +1,13 @@
 BOARD_TYPE          := 0x84
 BOARD_REVISION      := 0x01
-BOOTLOADER_VERSION  := 0x81
+BOOTLOADER_VERSION  := 0x84
+
 HW_TYPE             := 0x00		# seems to be unused
 
 MCU                 := cortex-m4
 CHIP                := STM32F407VGT
-BOARD               := STM32F4xx_FLYINGF4
+STM32_TYPE          := STM32F40_41xxx
+BOARD               := STM32F4xx_DISCOVERYF4
 MODEL               := HD
 MODEL_SUFFIX        := 
 

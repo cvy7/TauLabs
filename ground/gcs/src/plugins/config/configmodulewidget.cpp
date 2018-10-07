@@ -3,6 +3,7 @@
  * @file       configmodulewidget.cpp
  * @brief      Configure the optional modules
  * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013
+ * @author     dRonin, http://dronin.org Copyright (C) 2015
  * @addtogroup GCSPlugins GCS Plugins
  * @{
  * @addtogroup ConfigPlugin Config Plugin
@@ -28,14 +29,17 @@
 
 #include <extensionsystem/pluginmanager.h>
 #include <coreplugin/generalsettings.h>
+#include <coreplugin/iboardtype.h>
 
 
 #include "airspeedsettings.h"
 #include "flightbatterysettings.h"
 #include "hottsettings.h"
 #include "flightbatterystate.h"
+#include "geofencesettings.h"
 #include "modulesettings.h"
 #include "vibrationanalysissettings.h"
+#include "picocsettings.h"
 
 // Define static variables
 QString ConfigModuleWidget::trueString("TrueString");
@@ -69,6 +73,9 @@ ConfigModuleWidget::ConfigModuleWidget(QWidget *parent) : ConfigTaskWidget(paren
     HoTTSettings hoTTSettings;
     QString hoTTSettingsName = hoTTSettings.getName();
 
+    PicoCSettings picoCSettings;
+    QString picoCSettingsName = picoCSettings.getName();
+
     // Link the checkboxes
     addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbAirspeed, ModuleSettings::ADMINSTATE_AIRSPEED);
     addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbAltitudeHold, ModuleSettings::ADMINSTATE_ALTITUDEHOLD);
@@ -76,24 +83,30 @@ ConfigModuleWidget::ConfigModuleWidget(QWidget *parent) : ConfigTaskWidget(paren
     addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbComBridge, ModuleSettings::ADMINSTATE_COMUSBBRIDGE);
     addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbGPS, ModuleSettings::ADMINSTATE_GPS);
     addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbUavoMavlink, ModuleSettings::ADMINSTATE_UAVOMAVLINKBRIDGE);
-    addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbOveroSync, ModuleSettings::ADMINSTATE_OVEROSYNC);
     addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbVibrationAnalysis, ModuleSettings::ADMINSTATE_VIBRATIONANALYSIS);
     addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbVtolFollower, ModuleSettings::ADMINSTATE_VTOLPATHFOLLOWER);
     addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbPathPlanner, ModuleSettings::ADMINSTATE_PATHPLANNER);
+    addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbPicoC, ModuleSettings::ADMINSTATE_PICOC);
     addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbUAVOHottBridge, ModuleSettings::ADMINSTATE_UAVOHOTTBRIDGE);
     addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbUAVOLighttelemetryBridge, ModuleSettings::ADMINSTATE_UAVOLIGHTTELEMETRYBRIDGE);
     addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbUAVOFrskyBridge, ModuleSettings::ADMINSTATE_UAVOFRSKYSENSORHUBBRIDGE);
+    addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbUAVOFrSkySPortBridge, ModuleSettings::ADMINSTATE_UAVOFRSKYSPORTBRIDGE);
+    addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbGeofence, ModuleSettings::ADMINSTATE_GEOFENCE);
+    addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbAutotune, ModuleSettings::ADMINSTATE_AUTOTUNE);
+    addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbUAVOMSPBridge, ModuleSettings::ADMINSTATE_UAVOMSPBRIDGE);
+    addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbTxPid, ModuleSettings::ADMINSTATE_TXPID);
+    addUAVObjectToWidgetRelation(moduleSettingsName, "AdminState", ui->cbLogging, ModuleSettings::ADMINSTATE_LOGGING);
 
-    addUAVObjectToWidgetRelation(batterySettingsName, "SensorType", ui->gb_measureVoltage, FlightBatterySettings::SENSORTYPE_BATTERYVOLTAGE);
-    addUAVObjectToWidgetRelation(batterySettingsName, "SensorType", ui->gb_measureCurrent, FlightBatterySettings::SENSORTYPE_BATTERYCURRENT);
+    // Don't allow these to be changed here, only in the respective tabs.
+    ui->cbAutotune->setDisabled(true);
+    ui->cbTxPid->setDisabled(true);
 
-    // Link the fields
-    addUAVObjectToWidgetRelation(airspeedSettingsName, "GPSSamplePeriod_ms", ui->sb_gpsUpdateRate);
-    addUAVObjectToWidgetRelation(airspeedSettingsName, "Scale", ui->sb_pitotScale);
-    addUAVObjectToWidgetRelation(airspeedSettingsName, "ZeroPoint", ui->sb_pitotZeroPoint);
-    addUAVObjectToWidgetRelation(airspeedSettingsName, "AnalogPin", ui->cbAirspeedAnalog);
+    // Connect the voltage and current checkboxes, such that the ADC pins are toggled and vice versa
+    connect(ui->gb_measureVoltage, SIGNAL(toggled(bool)), this, SLOT(toggleBatteryMonitoringPin()));
+    connect(ui->gb_measureCurrent, SIGNAL(toggled(bool)), this, SLOT(toggleBatteryMonitoringPin()));
+    connect(ui->cbVoltagePin, SIGNAL(currentIndexChanged(int)), this, SLOT(toggleBatteryMonitoringGb()));
+    connect(ui->cbCurrentPin, SIGNAL(currentIndexChanged(int)), this, SLOT(toggleBatteryMonitoringGb()));
 
-    addUAVObjectToWidgetRelation(batterySettingsName, "Type", ui->cb_batteryType);
     addUAVObjectToWidgetRelation(batterySettingsName, "NbCells", ui->sb_numBatteryCells);
     addUAVObjectToWidgetRelation(batterySettingsName, "Capacity", ui->sb_batteryCapacity);
     addUAVObjectToWidgetRelation(batterySettingsName, "VoltagePin", ui->cbVoltagePin);
@@ -104,9 +117,14 @@ ConfigModuleWidget::ConfigModuleWidget(QWidget *parent) : ConfigTaskWidget(paren
     addUAVObjectToWidgetRelation(batterySettingsName, "SensorCalibrationFactor", ui->sb_currentFactor, FlightBatterySettings::SENSORCALIBRATIONFACTOR_CURRENT);
     addUAVObjectToWidgetRelation(batterySettingsName, "SensorCalibrationOffset", ui->sb_voltageOffSet, FlightBatterySettings::SENSORCALIBRATIONOFFSET_VOLTAGE);
     addUAVObjectToWidgetRelation(batterySettingsName, "SensorCalibrationOffset", ui->sb_currentOffSet, FlightBatterySettings::SENSORCALIBRATIONOFFSET_CURRENT);
+    addUAVObjectToWidgetRelation(batterySettingsName, "FlightTimeThresholds", ui->sb_flightTimeAlarm, FlightBatterySettings::FLIGHTTIMETHRESHOLDS_ALARM);
+    addUAVObjectToWidgetRelation(batterySettingsName, "FlightTimeThresholds", ui->sb_flightTimeWarning, FlightBatterySettings::FLIGHTTIMETHRESHOLDS_WARNING);
 
     addUAVObjectToWidgetRelation(batteryStateName, "Voltage", ui->le_liveVoltageReading);
     addUAVObjectToWidgetRelation(batteryStateName, "Current", ui->le_liveCurrentReading);
+
+    addUAVObjectToWidgetRelation(batteryStateName, "ConsumedEnergy", ui->le_liveConsumedEnergy);
+    addUAVObjectToWidgetRelation(batteryStateName, "EstimatedFlightTime", ui->le_liveEstimatedFlightTime);
 
     addUAVObjectToWidgetRelation(vibrationAnalysisSettingsName, "SampleRate", ui->sb_sampleRate);
     addUAVObjectToWidgetRelation(vibrationAnalysisSettingsName, "FFTWindowSize", ui->cb_windowSize);
@@ -284,11 +302,29 @@ ConfigModuleWidget::ConfigModuleWidget(QWidget *parent) : ConfigTaskWidget(paren
     ui->cb_ALTITUDEBEEP->setProperty(trueString.toLatin1(), "Enabled");
     ui->cb_ALTITUDEBEEP->setProperty(falseString.toLatin1(), "Disabled");
 
-    //Help button
-    addHelpButton(ui->inputHelp,"http://wiki.taulabs.org/OnlineHelp:-Modules");
+    // Connect PicoC settings
+    addUAVObjectToWidgetRelation(picoCSettingsName, "MaxFileSize", ui->sb_picocMaxFileSize);
+    addUAVObjectToWidgetRelation(picoCSettingsName, "TaskStackSize", ui->sb_picocTaskStackSize);
+    addUAVObjectToWidgetRelation(picoCSettingsName, "PicoCStackSize", ui->sb_picocPicoCStackSize);
+    addUAVObjectToWidgetRelation(picoCSettingsName, "BootFileID", ui->sb_picocBootFileID);
+    addUAVObjectToWidgetRelation(picoCSettingsName, "Startup", ui->cb_picocStartup);
+    addUAVObjectToWidgetRelation(picoCSettingsName, "Source", ui->cb_picocSource);
+    addUAVObjectToWidgetRelation(picoCSettingsName, "ComSpeed", ui->cb_picocComSpeed);
 
-    // Connect any remaining widgets
-    connect(airspeedSettings, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(updateAirspeedUAVO(UAVObject *)));
+    // Connect Airspeed Settings
+    addUAVObjectToWidgetRelation(airspeedSettingsName, "AirspeedSensorType", ui->cb_airspeedSensorType);
+    addUAVObjectToWidgetRelation(airspeedSettingsName, "GPSSamplePeriod_ms", ui->sb_gpsUpdateRate);
+    addUAVObjectToWidgetRelation(airspeedSettingsName, "Scale", ui->sb_pitotScale);
+    addUAVObjectToWidgetRelation(airspeedSettingsName, "ZeroPoint", ui->sb_pitotZeroPoint);
+    addUAVObjectToWidgetRelation(airspeedSettingsName, "AnalogPin", ui->cbAirspeedAnalog);
+    connect(airspeedSettings, SIGNAL(objectUpdated(UAVObject*)), this, SLOT(updateAirspeedGroupbox(UAVObject *)));
+    connect(ui->gb_airspeedGPS, SIGNAL(clicked(bool)), this, SLOT(enableAirspeedTypeGPS(bool)));
+    connect(ui->gb_airspeedPitot, SIGNAL(clicked(bool)), this, SLOT(enableAirspeedTypePitot(bool)));
+
+    //Help button
+    addHelpButton(ui->inputHelp,"https://github.com/TauLabs/TauLabs/wiki/OnlineHelp:-Modules");
+
+    // Link the fields
     connect(ui->pb_startVibrationTest, SIGNAL(clicked()), this, SLOT(toggleVibrationTest()));
 
     // Set text properties for checkboxes. The second argument is the UAVO field that corresponds
@@ -311,9 +347,6 @@ ConfigModuleWidget::ConfigModuleWidget(QWidget *parent) : ConfigTaskWidget(paren
     ui->cbUavoMavlink->setProperty(trueString.toLatin1(), "Enabled");
     ui->cbUavoMavlink->setProperty(falseString.toLatin1(), "Disabled");
 
-    ui->cbOveroSync->setProperty(trueString.toLatin1(), "Enabled");
-    ui->cbOveroSync->setProperty(falseString.toLatin1(), "Disabled");
-
     ui->cbVibrationAnalysis->setProperty(trueString.toLatin1(), "Enabled");
     ui->cbVibrationAnalysis->setProperty(falseString.toLatin1(), "Disabled");
 
@@ -323,14 +356,29 @@ ConfigModuleWidget::ConfigModuleWidget(QWidget *parent) : ConfigTaskWidget(paren
     ui->cbPathPlanner->setProperty(trueString.toLatin1(), "Enabled");
     ui->cbPathPlanner->setProperty(falseString.toLatin1(), "Disabled");
 
+    ui->cbPicoC->setProperty(trueString.toLatin1(), "Enabled");
+    ui->cbPicoC->setProperty(falseString.toLatin1(), "Disabled");
+
     ui->cbUAVOHottBridge->setProperty(trueString.toLatin1(), "Enabled");
     ui->cbUAVOHottBridge->setProperty(falseString.toLatin1(), "Disabled");
 
     ui->cbUAVOFrskyBridge->setProperty(trueString.toLatin1(), "Enabled");
     ui->cbUAVOFrskyBridge->setProperty(falseString.toLatin1(), "Disabled");
-    
+
+    ui->cbUAVOFrSkySPortBridge->setProperty(trueString.toLatin1(), "Enabled");
+    ui->cbUAVOFrSkySPortBridge->setProperty(falseString.toLatin1(), "Disabled");
+
     ui->cbUAVOLighttelemetryBridge->setProperty(trueString.toLatin1(), "Enabled");
     ui->cbUAVOLighttelemetryBridge->setProperty(falseString.toLatin1(), "Disabled");	
+
+    ui->cbGeofence->setProperty(trueString.toLatin1(), "Enabled");
+    ui->cbGeofence->setProperty(falseString.toLatin1(), "Disabled");
+
+    ui->cbAutotune->setProperty(trueString.toLatin1(), "Enabled");
+    ui->cbAutotune->setProperty(falseString.toLatin1(), "Disabled");
+
+    ui->cbLogging->setProperty(trueString.toLatin1(), "Enabled");
+    ui->cbLogging->setProperty(falseString.toLatin1(), "Disabled");
 
     ui->gb_measureVoltage->setProperty(trueString.toLatin1(), "Enabled");
     ui->gb_measureVoltage->setProperty(falseString.toLatin1(), "Disabled");
@@ -338,10 +386,18 @@ ConfigModuleWidget::ConfigModuleWidget(QWidget *parent) : ConfigTaskWidget(paren
     ui->gb_measureCurrent->setProperty(trueString.toLatin1(), "Enabled");
     ui->gb_measureCurrent->setProperty(falseString.toLatin1(), "Disabled");
 
+    ui->cbUAVOMSPBridge->setProperty(trueString.toLatin1(), "Enabled");
+    ui->cbUAVOMSPBridge->setProperty(falseString.toLatin1(), "Disabled");
+
+    ui->cbTxPid->setProperty(trueString.toLatin1(), "Enabled");
+    ui->cbTxPid->setProperty(falseString.toLatin1(), "Disabled");
+
     enableBatteryTab(false);
     enableAirspeedTab(false);
     enableVibrationTab(false);
     enableHoTTTelemetryTab(false);
+    enableGeofenceTab(false);
+    enablePicoCTab(false);
 
     // Load UAVObjects to widget relations from UI file
     // using objrelation dynamic property
@@ -352,6 +408,13 @@ ConfigModuleWidget::ConfigModuleWidget(QWidget *parent) : ConfigTaskWidget(paren
 
     // Prevent mouse wheel from changing values
     disableMouseWheelEvents();
+
+    setNotMandatory(batterySettingsName);
+    setNotMandatory(airspeedSettingsName);
+    setNotMandatory(vibrationAnalysisSettingsName);
+    setNotMandatory(hoTTSettingsName);
+    setNotMandatory(picoCSettingsName);
+    setNotMandatory(GeoFenceSettings::NAME);
 }
 
 ConfigModuleWidget::~ConfigModuleWidget()
@@ -389,6 +452,19 @@ void ConfigModuleWidget::recheckTabs()
     obj = getObjectManager()->getObject(HoTTSettings::NAME);
     connect(obj, SIGNAL(transactionCompleted(UAVObject*,bool)), this, SLOT(objectUpdated(UAVObject*,bool)), Qt::UniqueConnection);
     obj->requestUpdate();
+
+    obj = getObjectManager()->getObject(GeoFenceSettings::NAME);
+    connect(obj, SIGNAL(transactionCompleted(UAVObject*,bool)), this, SLOT(objectUpdated(UAVObject*,bool)), Qt::UniqueConnection);
+    obj->requestUpdate();
+
+    obj = getObjectManager()->getObject(PicoCSettings::NAME);
+    connect(obj, SIGNAL(transactionCompleted(UAVObject*,bool)), this, SLOT(objectUpdated(UAVObject*,bool)), Qt::UniqueConnection);
+    obj->requestUpdate();
+
+    // This requires re-evaluation so that board connection doesn't re-enable
+    // the fields.
+    ui->cbAutotune->setDisabled(true);
+    ui->cbTxPid->setDisabled(true);
 }
 
 //! Enable appropriate tab when objects are updated
@@ -398,14 +474,25 @@ void ConfigModuleWidget::objectUpdated(UAVObject * obj, bool success)
         return;
 
     QString objName = obj->getName();
-    if (objName.compare(AirspeedSettings::NAME) == 0)
+    if (objName.compare(AirspeedSettings::NAME) == 0) {
         enableAirspeedTab(success);
-    else if (objName.compare(FlightBatterySettings::NAME) == 0)
+    }
+    else if (objName.compare(FlightBatterySettings::NAME) == 0) {
         enableBatteryTab(success);
-    else if (objName.compare(VibrationAnalysisSettings::NAME) == 0)
+        refreshAdcNames();
+    }
+    else if (objName.compare(VibrationAnalysisSettings::NAME) == 0) {
         enableVibrationTab(success);
-    else if (objName.compare(HoTTSettings::NAME) == 0)
+    }
+    else if (objName.compare(HoTTSettings::NAME) == 0) {
         enableHoTTTelemetryTab(success);
+    }
+    else if (objName.compare(GeoFenceSettings::NAME) == 0) {
+        enableGeofenceTab(success);
+    }
+    else if (objName.compare(PicoCSettings::NAME) == 0) {
+        enablePicoCTab(success);
+    }
 }
 
 /**
@@ -506,9 +593,32 @@ void ConfigModuleWidget::toggleVibrationTest()
     vibrationAnalysisSettings->updated();
 }
 
-void ConfigModuleWidget::updateAirspeedUAVO(UAVObject *obj)
+/**
+ * @brief Toggle voltage and current pins depending on battery monitoring checkboxes
+ */
+void ConfigModuleWidget::toggleBatteryMonitoringPin()
 {
-    Q_UNUSED(obj);
+    if (!ui->gb_measureVoltage->isChecked())
+        ui->cbVoltagePin->setCurrentIndex(ui->cbVoltagePin->findText("NONE"));
+
+    if (!ui->gb_measureCurrent->isChecked())
+        ui->cbCurrentPin->setCurrentIndex(ui->cbCurrentPin->findText("NONE"));
+}
+
+/**
+ * @brief Toggle battery monitoring checkboxes depending on voltage and current pins
+ */
+void ConfigModuleWidget::toggleBatteryMonitoringGb()
+{
+    if (ui->cbVoltagePin->currentText().compare("NONE") != 0)
+        ui->gb_measureVoltage->setChecked(true);
+    else
+        ui->gb_measureVoltage->setChecked(false);
+
+    if (ui->cbCurrentPin->currentText().compare("NONE") != 0)
+        ui->gb_measureCurrent->setChecked(true);
+    else
+        ui->gb_measureCurrent->setChecked(false);
 }
 
 /**
@@ -527,21 +637,46 @@ void ConfigModuleWidget::updateAirspeedGroupbox(UAVObject *obj)
     ui->gb_airspeedGPS->setChecked(false);
     ui->gb_airspeedPitot->setChecked(false);
 
-    switch (airspeedSettingsData.AirspeedSensorType) {
-    case AirspeedSettings::AIRSPEEDSENSORTYPE_GPSONLY:
+    if (airspeedSettingsData.AirspeedSensorType == AirspeedSettings::AIRSPEEDSENSORTYPE_GPSONLY) {
         ui->gb_airspeedGPS->setChecked(true);
-        break;
-    case AirspeedSettings::AIRSPEEDSENSORTYPE_DIYDRONESMPXV5004:
-        ui->cb_pitotType->setCurrentIndex(AirspeedSettings::AIRSPEEDSENSORTYPE_DIYDRONESMPXV5004);
-        ui->gb_airspeedPitot->setChecked(true);
-    case AirspeedSettings::AIRSPEEDSENSORTYPE_DIYDRONESMPXV7002:
-        ui->cb_pitotType->setCurrentIndex(AirspeedSettings::AIRSPEEDSENSORTYPE_DIYDRONESMPXV7002);
-        ui->gb_airspeedPitot->setChecked(true);
-    case AirspeedSettings::AIRSPEEDSENSORTYPE_EAGLETREEAIRSPEEDV3:
-        ui->cb_pitotType->setCurrentIndex(AirspeedSettings::AIRSPEEDSENSORTYPE_EAGLETREEAIRSPEEDV3);
-        ui->gb_airspeedPitot->setChecked(true);
-        break;
     }
+    else {
+         ui->gb_airspeedPitot->setChecked(true);
+    }
+}
+
+/**
+ * @brief ConfigModuleWidget::toggleAirspeedType Toggle the airspeed sensor type based on checkbox
+ * @param checked
+ */
+void ConfigModuleWidget::enableAirspeedTypeGPS(bool checked)
+{
+    if (checked){
+        AirspeedSettings *airspeedSettings;
+        airspeedSettings = AirspeedSettings::GetInstance(getObjectManager());
+        AirspeedSettings::DataFields airspeedSettingsData;
+        airspeedSettingsData = airspeedSettings->getData();
+        airspeedSettingsData.AirspeedSensorType = AirspeedSettings::AIRSPEEDSENSORTYPE_GPSONLY;
+        airspeedSettings->setData(airspeedSettingsData);
+    }
+
+}
+
+/**
+ * @brief ConfigModuleWidget::toggleAirspeedType Toggle the airspeed sensor type based on checkbox
+ * @param checked
+ */
+void ConfigModuleWidget::enableAirspeedTypePitot(bool checked)
+{
+    if (checked){
+        AirspeedSettings *airspeedSettings;
+        airspeedSettings = AirspeedSettings::GetInstance(getObjectManager());
+        AirspeedSettings::DataFields airspeedSettingsData;
+        airspeedSettingsData = airspeedSettings->getData();
+        airspeedSettingsData.AirspeedSensorType = AirspeedSettings::AIRSPEEDSENSORTYPE_EAGLETREEAIRSPEEDV3;
+        airspeedSettings->setData(airspeedSettingsData);
+    }
+
 }
 
 //! Enable or disable the battery tab
@@ -570,6 +705,44 @@ void ConfigModuleWidget::enableHoTTTelemetryTab(bool enabled)
 {
     int idx = ui->moduleTab->indexOf(ui->tabHoTTTelemetry);
     ui->moduleTab->setTabEnabled(idx,enabled);
+}
+
+//! Enable or disable the geofence tab
+void ConfigModuleWidget::enableGeofenceTab(bool enabled)
+{
+    int idx = ui->moduleTab->indexOf(ui->tabGeofence);
+    ui->moduleTab->setTabEnabled(idx,enabled);
+}
+
+//! Enable or disable the PicoC tab
+void ConfigModuleWidget::enablePicoCTab(bool enabled)
+{
+    int idx = ui->moduleTab->indexOf(ui->tabPicoC);
+    ui->moduleTab->setTabEnabled(idx,enabled);
+}
+
+//! Replace ADC combobox names on battery tab with board specific ones
+void ConfigModuleWidget::refreshAdcNames(void)
+{
+    QStringList names;
+    Core::IBoardType *board = utilMngr->getBoardType();
+    if (board)
+        names = board->getAdcNames();
+    if (names.isEmpty())
+        return;
+
+    for (int i = 0; i <= 8; i++) {
+        QString name;
+        if (i < names.length())
+            name = names[i] + QString(" (ADC%1)").arg(i);
+        else
+            name = QString("N/A (ADC%1)").arg(i);
+
+        if (i < ui->cbVoltagePin->count())
+            ui->cbVoltagePin->setItemText(i, name);
+        if (i < ui->cbCurrentPin->count())
+            ui->cbCurrentPin->setItemText(i, name);
+    }
 }
 
 /**

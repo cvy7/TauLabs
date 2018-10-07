@@ -6,7 +6,7 @@
  * @{
  *
  * @file       tablet_control.c
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013-2014
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013-2015
  * @brief      Use tablet for control source
  *
  * @see        The GNU Public License (GPL) Version 3
@@ -33,16 +33,18 @@
 #include "tablet_control.h"
 #include "transmitter_control.h"
 #include "physical_constants.h"
+#include "coordinate_conversions.h"
 
 #include "flightstatus.h"
 #include "gpsposition.h"
 #include "homelocation.h"
+#include "loitercommand.h"
 #include "pathdesired.h"
 #include "positionactual.h"
 #include "tabletinfo.h"
 #include "systemsettings.h"
 
-#if !defined(COPTERCONTROL)
+#if !defined(SMALLF1)
 
 //! Private methods
 static int32_t tabletInfo_to_ned(TabletInfoData *tabletInfo, float *NED);
@@ -86,38 +88,27 @@ int32_t tablet_control_select(bool reset_controller)
 	PathDesiredGet(&pathDesired);
 
 	uint8_t mode = flightStatus.FlightMode;
-	static TabletInfoTabletModeDesiredOptions last_tablet_mode;
 
 	switch(tabletInfo.TabletModeDesired) {
 		case TABLETINFO_TABLETMODEDESIRED_POSITIONHOLD:
-			if (mode != FLIGHTSTATUS_FLIGHTMODE_POSITIONHOLD || 
-			    last_tablet_mode != tabletInfo.TabletModeDesired) {
-				mode = FLIGHTSTATUS_FLIGHTMODE_TABLETCONTROL;
+			// Use the position hold FSM. This will take the current position
+			// when flight mode first is position hold. The tablet does not
+			// set the position explicitly
+			mode = FLIGHTSTATUS_FLIGHTMODE_POSITIONHOLD;
 
-				PositionActualData positionActual;
-				PositionActualGet(&positionActual);
+			// Command to not move. This code is identical to that in manualcontrol
+			LoiterCommandData loiterCommand;
+			loiterCommand.Pitch = 0;
+			loiterCommand.Roll = 0;
+			loiterCommand.Throttle = 0.5f;
+			loiterCommand.Frame = LOITERCOMMAND_FRAME_BODY;
+			LoiterCommandSet(&loiterCommand);
 
-				pathDesired.End[0] = positionActual.North;
-				pathDesired.End[1] = positionActual.East;
-				pathDesired.End[2] = positionActual.Down;
-				pathDesired.Mode = PATHDESIRED_MODE_HOLDPOSITION;
-				pathDesired.StartingVelocity = 5;
-				pathDesired.EndingVelocity = 5;
-
-				PathDesiredSet(&pathDesired);				
-			}
 			break;
 		case TABLETINFO_TABLETMODEDESIRED_RETURNTOHOME:
-			mode = FLIGHTSTATUS_FLIGHTMODE_TABLETCONTROL;
 
-			pathDesired.End[0] = 0;
-			pathDesired.End[1] = 0;
-			pathDesired.End[2] = -HOME_ALTITUDE_OFFSET;
-			pathDesired.Mode = PATHDESIRED_MODE_HOLDPOSITION;
-			pathDesired.StartingVelocity = 5;
-			pathDesired.EndingVelocity = 5;
-
-			PathDesiredSet(&pathDesired);
+			// Use the return to home FSM.
+			mode = FLIGHTSTATUS_FLIGHTMODE_RETURNTOHOME;
 
 			break;
 		case TABLETINFO_TABLETMODEDESIRED_RETURNTOTABLET:
@@ -155,7 +146,7 @@ int32_t tablet_control_select(bool reset_controller)
 
 			float DeltaN = NED[0] - positionActual.North;
 			float DeltaE = NED[1] - positionActual.East;
-			float dist = sqrt(DeltaN * DeltaN + DeltaE * DeltaE);
+			float dist = sqrtf(DeltaN * DeltaN + DeltaE * DeltaE);
 
 			// If outside the follow radius code to the nearest point on the border
 			// otherwise stay in the same location
@@ -183,9 +174,6 @@ int32_t tablet_control_select(bool reset_controller)
 			// Fail out.  This will trigger failsafe mode.
 			return -1;
 	}
-
-	// Cache the last tablet mode
-	last_tablet_mode = tabletInfo.TabletModeDesired;
 
 	// Update mode if changed
 	if (mode != flightStatus.FlightMode) {
@@ -220,13 +208,8 @@ static int32_t tabletInfo_to_ned(TabletInfoData *tabletInfo, float *NED)
 	GPSPositionData gpsPosition;
 	GPSPositionGet(&gpsPosition);
 
-	float lat = homeLocation.Latitude / 10.0e6f * DEG2RAD;
-	float alt = homeLocation.Altitude;
-
-	float T[3];
-	T[0] = alt+6.378137E6f;
-	T[1] = cosf(lat)*(alt+6.378137E6f);
-	T[2] = -1.0f;
+	float linearized_conversion_factor_f[3];
+	LLA2NED_linearization_float(homeLocation.Latitude, homeLocation.Altitude, linearized_conversion_factor_f);
 
 	// Tablet altitude is in WSG84 but we use height above the geoid elsewhere so use the
 	// GPS GeoidSeparation as a proxy
@@ -235,13 +218,10 @@ static int32_t tabletInfo_to_ned(TabletInfoData *tabletInfo, float *NED)
 	// and https://code.google.com/p/android/issues/detail?id=53471
 	// This means that "(tabletInfo->Altitude + gpsPosition.GeoidSeparation - homeLocation.Altitude)"
 	// will be correct or incorrect depending on the device.
-	float dL[3] = {(tabletInfo->Latitude - homeLocation.Latitude) / 10.0e6f * DEG2RAD,
-		(tabletInfo->Longitude - homeLocation.Longitude) / 10.0e6f * DEG2RAD,
-		(tabletInfo->Altitude + gpsPosition.GeoidSeparation - homeLocation.Altitude)};
+	get_linearized_3D_transformation(tabletInfo->Latitude, tabletInfo->Longitude, tabletInfo->Altitude + gpsPosition.GeoidSeparation,
+	                                 homeLocation.Latitude, homeLocation.Longitude, homeLocation.Altitude,
+	                                 linearized_conversion_factor_f, NED);
 
-	NED[0] = T[0] * dL[0];
-	NED[1] = T[1] * dL[1];
-	NED[2] = T[2] * dL[2];
 
 	return 0;
 }

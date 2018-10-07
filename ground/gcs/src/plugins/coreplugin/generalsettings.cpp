@@ -2,6 +2,7 @@
  ******************************************************************************
  *
  * @file       generalsettings.cpp
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2014
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
  *             Parts by Nokia Corporation (qt-info@nokia.com) Copyright (C) 2009.
  * @addtogroup GCSPlugins GCS Plugins
@@ -50,7 +51,8 @@ GeneralSettings::GeneralSettings():
     m_useExpertMode(false),
     m_dialog(0),
     m_proxyType(QNetworkProxy::NoProxy),
-    m_proxyPort(0)
+    m_proxyPort(0),
+    m_useSessionManaging(true)
 {
 }
 
@@ -94,7 +96,7 @@ void GeneralSettings::fillLanguageBox() const
 
     const QString creatorTrPath =
             Core::ICore::instance()->resourcePath() + QLatin1String("/translations");
-    const QStringList languageFiles = QDir(creatorTrPath).entryList(QStringList(QLatin1String("openpilotgcs*.qm")));
+    const QStringList languageFiles = QDir(creatorTrPath).entryList(QStringList(QLatin1String("taulabs*.qm")));
 
     Q_FOREACH(const QString &languageFile, languageFiles)
     {
@@ -132,6 +134,7 @@ QWidget *GeneralSettings::createPage(QWidget *parent)
     m_page->checkAutoSelect->setChecked(m_autoSelect);
     m_page->cbUseUDPMirror->setChecked(m_useUDPMirror);
     m_page->cbExpertMode->setChecked(m_useExpertMode);
+    m_page->cbSessionMessaging->setChecked(m_useSessionManaging);
     m_page->colorButton->setColor(StyleHelper::baseColor());
     m_page->proxyTypeCB->setCurrentIndex(m_page->proxyTypeCB->findData(m_proxyType));
     m_page->portLE->setText(QString::number(m_proxyPort));
@@ -152,8 +155,9 @@ void GeneralSettings::apply()
     StyleHelper::setBaseColor(m_page->colorButton->color());
 
     m_saveSettingsOnExit = m_page->checkBoxSaveOnExit->isChecked();
-    m_useUDPMirror=m_page->cbUseUDPMirror->isChecked();
-    m_useExpertMode=m_page->cbExpertMode->isChecked();
+    m_useUDPMirror = m_page->cbUseUDPMirror->isChecked();
+    m_useExpertMode = m_page->cbExpertMode->isChecked();
+    m_useSessionManaging = m_page->cbSessionMessaging->isChecked();
     m_autoConnect = m_page->checkAutoConnect->isChecked();
     m_autoSelect = m_page->checkAutoSelect->isChecked();
     m_proxyType = m_page->proxyTypeCB->itemData(m_page->proxyTypeCB->currentIndex()).toInt();
@@ -162,6 +166,7 @@ void GeneralSettings::apply()
     m_proxyUser = m_page->userLE->text();
     m_proxyPassword = m_page->passwordLE->text();
     QNetworkProxy::setApplicationProxy (getNetworkProxy());
+    emit generalSettingsChanged();
 }
 
 void GeneralSettings::finish()
@@ -178,12 +183,18 @@ void GeneralSettings::readSettings(QSettings* qs)
     m_autoSelect = qs->value(QLatin1String("AutoSelect"),m_autoSelect).toBool();
     m_useUDPMirror = qs->value(QLatin1String("UDPMirror"),m_useUDPMirror).toBool();
     m_useExpertMode = qs->value(QLatin1String("ExpertMode"),m_useExpertMode).toBool();
+    m_useSessionManaging = qs->value(QLatin1String("UseSessionManaging"), m_useSessionManaging).toBool();
     m_proxyType = qs->value(QLatin1String("proxytype"),m_proxyType).toInt();
     m_proxyPort = qs->value(QLatin1String("proxyport"),m_proxyPort).toInt();
     m_proxyHostname = qs->value(QLatin1String("proxyhostname"),m_proxyHostname).toString();
     m_proxyUser = qs->value(QLatin1String("proxyuser"),m_proxyUser).toString();
     m_proxyPassword = qs->value(QLatin1String("proxypassword"),m_proxyPassword).toString();
+    m_forumUser = qs->value(QLatin1String("forumuser"),m_forumUser).toString();
+    m_forumPassword = qs->value(QLatin1String("forumpassword"),m_forumPassword).toString();
+    m_aircraft = qs->value(QLatin1String("aircraft"),m_aircraft).toString();
+    m_observations = qs->value(QLatin1String("observations"),m_observations).toString();
     qs->endGroup();
+    emit generalSettingsChanged();
 }
 
 void GeneralSettings::saveSettings(QSettings* qs)
@@ -200,12 +211,17 @@ void GeneralSettings::saveSettings(QSettings* qs)
     qs->setValue(QLatin1String("AutoSelect"), m_autoSelect);
     qs->setValue(QLatin1String("UDPMirror"), m_useUDPMirror);
     qs->setValue(QLatin1String("ExpertMode"), m_useExpertMode);
+    qs->setValue(QLatin1String("UseSessionManaging"), m_useSessionManaging);
 
     qs->setValue(QLatin1String("proxytype"), m_proxyType);
     qs->setValue(QLatin1String("proxyport"), m_proxyPort);
     qs->setValue(QLatin1String("proxyhostname"), m_proxyHostname);
     qs->setValue(QLatin1String("proxyuser"), m_proxyUser);
     qs->setValue(QLatin1String("proxypassword"), m_proxyPassword);
+    qs->setValue(QLatin1String("forumuser"), m_forumUser);
+    qs->setValue(QLatin1String("forumpassword"), m_forumPassword);
+    qs->setValue(QLatin1String("observations"), m_observations);
+    qs->setValue(QLatin1String("aircraft"), m_aircraft);
     qs->endGroup();
 }
 
@@ -266,14 +282,59 @@ bool GeneralSettings::useUDPMirror() const
     return m_useUDPMirror;
 }
 
+bool GeneralSettings::useSessionManaging() const
+{
+    return m_useSessionManaging;
+}
+
 bool GeneralSettings::useExpertMode() const
 {
     return m_useExpertMode;
 }
 
+QString GeneralSettings::getForumUser() const
+{
+    return m_forumUser;
+}
+
+QString GeneralSettings::getForumPassword() const
+{
+    return m_forumPassword;
+}
+
+void GeneralSettings::setForumUser(QString value)
+{
+    m_forumUser = value;
+}
+
+void GeneralSettings::setForumPassword(QString value)
+{
+    m_forumPassword = value;
+}
+
 QNetworkProxy GeneralSettings::getNetworkProxy()
 {
     return QNetworkProxy((QNetworkProxy::ProxyType)m_proxyType, m_proxyHostname, m_proxyPort, m_proxyUser, m_proxyPassword);
+}
+
+void GeneralSettings::setObservations(QString value)
+{
+    m_observations = value;
+}
+
+void GeneralSettings::setAircraftDescription(QString value)
+{
+    m_aircraft = value;
+}
+
+QString GeneralSettings::getObservations()
+{
+    return m_observations;
+}
+
+QString GeneralSettings::getAircraftDescription()
+{
+    return m_aircraft;
 }
 
 void GeneralSettings::slotAutoConnect(int value)

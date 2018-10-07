@@ -6,7 +6,7 @@
  * @{
  *
  * @file       pios_brushless.c
- * @author     Tau Labs, http://github.com/TauLabs Copyright (C) 2013.
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2014
  * @brief      Brushless gimbal controller
  * @see        The GNU Public License (GPL) Version 3
  *
@@ -31,9 +31,9 @@
 #include "pios.h"
 #include "pios_brushless_priv.h"
 #include "pios_tim_priv.h"
+#include "pios_thread.h"
 
 #include "physical_constants.h"
-#include "sin_lookup.h"
 #include "misc_math.h"
 
 /* Private Function Prototypes */
@@ -42,11 +42,11 @@ static void PIOS_BRUSHLESS_Task(void* parameters);
 
 // Private variables
 static const struct pios_brushless_cfg * brushless_cfg;
-static xTaskHandle taskHandle;
+static struct pios_thread *taskHandle;
 
 #define NUM_BGC_CHANNELS 3
 #define STACK_SIZE_BYTES 400
-#define TASK_PRIORITY  (tskIDLE_PRIORITY+4)
+#define TASK_PRIORITY  PIOS_THREAD_PRIO_HIGHEST
 
 /**
 * Initialise Servos
@@ -99,7 +99,8 @@ int32_t PIOS_Brushless_Init(const struct pios_brushless_cfg * cfg)
 	}
 
 	// Start main task
-	xTaskCreate(PIOS_BRUSHLESS_Task, (signed char*)"PIOS_BRUSHLESS", STACK_SIZE_BYTES/4, NULL, TASK_PRIORITY, &taskHandle);
+	taskHandle = PIOS_Thread_Create(
+			PIOS_BRUSHLESS_Task, "pios_brushless", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
 
 	return 0;
 }
@@ -111,7 +112,7 @@ static float    scales[NUM_BGC_CHANNELS];      /*! fractional scale for each cha
 static float    accel_limit[NUM_BGC_CHANNELS]; /*! slew rate limit (deg/s^2) */
 static int16_t  scale;                         /*! amplitude of sine wave */
 static int32_t  center;                        /*! center value of sine wave */
-
+static bool     locked;                        /*! whether the gimbal is currently locked */
 /**
 * Set the servo update rate (Max 500Hz)
 * \param[in] rate in Hz
@@ -187,6 +188,13 @@ int32_t PIOS_Brushless_SetMaxAcceleration(float roll, float pitch, float yaw)
 	return 0;
 }
 
+//! Lock or unlock the gimbal at the current position
+int32_t PIOS_Brushless_Lock(bool lock)
+{
+	locked = lock;
+	return 0;
+}
+
 /**
  * PIOS_Brushless_SetPhase set the phase for one of the channel outputs
  * @param[in] channel The channel to set
@@ -245,24 +253,37 @@ static void PIOS_BRUSHLESS_Task(void* parameters)
 {
 	const uint32_t TICK_DELAY = 1;
 
-	portTickType lastSysTime = xTaskGetTickCount();
+	uint32_t lastSysTime = PIOS_Thread_Systime();
 
 	while (1) {
 
-		vTaskDelayUntil(&lastSysTime, TICK_DELAY);
+		PIOS_Thread_Sleep_Until(&lastSysTime, TICK_DELAY);
 
-		const float dT = TICKS2MS(TICK_DELAY) * 0.001f;
+		const float dT = TICK_DELAY * 0.001f;
 
-		for (int channel = 0; channel < NUM_BGC_CHANNELS; channel++) {
+		if (!locked) {
+			for (int channel = 0; channel < NUM_BGC_CHANNELS; channel++) {
 
-			// Update phase and keep within [0 360)
-			phases[channel] += speeds[channel] * dT;
-			if (phases[channel] < 0)
-				phases[channel] += 360;
-			if (phases[channel] >= 360)
-				phases[channel] -= 360;
+				// Update phase and keep within [0 360)
+				phases[channel] += speeds[channel] * dT;
+				if (phases[channel] < 0)
+					phases[channel] += 360;
+				if (phases[channel] >= 360)
+					phases[channel] -= 360;
 
-			PIOS_Brushless_SetPhase(channel, phases[channel] + phase_lag[channel]);
+				PIOS_Brushless_SetPhase(channel, phases[channel] + phase_lag[channel]);
+			}
+		} else {
+			for (int channel = 0; channel < NUM_BGC_CHANNELS; channel++) {
+				
+				// Update phase and keep within [0 360)
+				if (phases[channel] < 0)
+					phases[channel] += 360;
+				if (phases[channel] >= 360)
+					phases[channel] -= 360;
+
+				PIOS_Brushless_SetPhase(channel, phases[channel]);
+			}
 		}
 	}
 }
