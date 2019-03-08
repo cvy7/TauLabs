@@ -126,7 +126,7 @@ ConfigAttitudeWidget::ConfigAttitudeWidget(QWidget *parent) :
     }
 
     // Must connect the graphs to the calibration object to see the calibration results
-    calibration.configureTempCurves(m_ui->xGyroTemp, m_ui->yGyroTemp, m_ui->zGyroTemp);
+    calibration.configureTempCurves(m_ui->xGyroTemp, m_ui->yGyroTemp, m_ui->zGyroTemp, m_ui->BaroTemp);
 
     // Connect the signals
     connect(m_ui->yawOrientationStart, SIGNAL(clicked()), &calibration, SLOT(doStartOrientation()));
@@ -142,6 +142,8 @@ ConfigAttitudeWidget::ConfigAttitudeWidget(QWidget *parent) :
     connect(m_ui->cancelTempCal, SIGNAL(clicked()), &calibration, SLOT(doCancelTempCalPoint()));
     connect(m_ui->tempCalRange, SIGNAL(valueChanged(int)), &calibration, SLOT(setTempCalRange(int)));
     calibration.setTempCalRange(m_ui->tempCalRange->value());
+    connect(m_ui->zero_press, SIGNAL(valueChanged(double)), &calibration, SLOT(setZeroPress(double)));
+    calibration.setZeroPress(m_ui->zero_press->value());
 
     // Let calibration update the UI
     connect(&calibration, SIGNAL(yawOrientationProgressChanged(int)), m_ui->pb_yawCalibration, SLOT(setValue(int)));
