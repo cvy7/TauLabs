@@ -381,6 +381,7 @@ void PIOS_Board_Init(void) {
 	HwDracoUartXbeeGet(&hw_uart_xbee);
 	PIOS_HAL_ConfigurePort(hw_uart_xbee,		/* port_type */
 			&pios_uart_xbee_cfg,				/* *usart_port_cfg */
+			NULL,
 			&pios_usart_com_driver,				/* *com_driver */
 			NULL,								/* *i2c_id */
 			NULL,								/* *i2c_cfg */
@@ -399,6 +400,7 @@ void PIOS_Board_Init(void) {
 	HwDracoUartGPSGet(&hw_uart_gps);
 	PIOS_HAL_ConfigurePort(hw_uart_gps,			/* port_type */
 			&pios_uart_gps_cfg,				/* *usart_port_cfg */
+			NULL,
 			&pios_usart_com_driver,				/* *com_driver */
 			NULL,								/* *i2c_id */
 			NULL,								/* *i2c_cfg */
@@ -417,6 +419,7 @@ void PIOS_Board_Init(void) {
 	HwDracoUartOnewireGet(&hw_uart_onewire);
 	PIOS_HAL_ConfigurePort(hw_uart_onewire,			/* port_type */
 			&pios_uart_onewire_sport_cfg,		/* *usart_port_cfg */
+			NULL,
 			&pios_usart_com_driver,				/* *com_driver */
 			NULL,								/* *i2c_id */
 			NULL,								/* *i2c_cfg */
@@ -435,6 +438,7 @@ void PIOS_Board_Init(void) {
 	HwDracoUartExtensionGet(&hw_uart_extension);
 	PIOS_HAL_ConfigurePort(hw_uart_extension,	/* port_type */
 			&pios_uart_extension_cfg,			/* *usart_port_cfg */
+			NULL,
 			&pios_usart_com_driver,				/* *com_driver */
 			NULL,								/* *i2c_id */
 			NULL,								/* *i2c_cfg */
@@ -488,6 +492,7 @@ void PIOS_Board_Init(void) {
 	HwDracoRcvrPortGet(&hw_rcvr_port);
 	PIOS_HAL_ConfigurePort(hw_rcvr_port,		/* port_type */
 			NULL,								/* *usart_port_cfg */
+			NULL,						/* *usart_port_cfg */
 			&pios_usart_com_driver,				/* *com_driver */
 			NULL,								/* *i2c_id */
 			NULL,								/* *i2c_cfg */

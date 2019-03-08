@@ -73,6 +73,7 @@ else:SOURCES += consoleprocess_unix.cpp
 HEADERS += utils_global.h \
     reloadpromptutils.h \
     settingsutils.h \
+    filesearch.h \
     listutils.h \
     pathchooser.h \
     pathlisteditor.h \

@@ -30,6 +30,8 @@ include $(BOARD_INFO_DIR)/board-info.mk
 # Set developer code and compile options
 # Set to YES for debugging
 DEBUG ?= NO
+ERASE_FLASH ?= NO
+RTOS ?= CHIBIOS
 
 # List of modules to include
 MODULES = Sensors
@@ -39,9 +41,11 @@ MODULES += ManualControl
 MODULES += Stabilization
 MODULES += FirmwareIAP
 MODULES += Telemetry
+PYMODULES = 
+#FlightPlan
 
 OPTMODULES += GPS
-OPTMODULES += AltitudeHold 
+OPTMODULES += AltitudeHold
 OPTMODULES += VtolPathFollower 
 OPTMODULES += FixedWingPathFollower
 OPTMODULES += GroundPathFollower
@@ -61,15 +65,19 @@ OPTMODULES += PicoC
 OPTMODULES += UAVOFrSKYSPortBridge
 OPTMODULES += Geofence
 OPTMODULES += Logging
+OPTMODULES += FlightStats
 
 # Paths
+TARGET_ARCHITECTURE = STM32F4xx
 OPUAVTALKINC = $(OPUAVTALK)/inc
 OPUAVOBJINC = $(OPUAVOBJ)/inc
 PIOSINC = $(PIOS)/inc
 FLIGHTLIBINC = $(FLIGHTLIB)/inc
 MATHLIB = $(FLIGHTLIB)/math
 MATHLIBINC = $(FLIGHTLIB)/math
-PIOSSTM32F4XX = $(PIOS)/STM32F4xx
+RSCODE = $(FLIGHTLIB)/rscode
+RSCODEINC = $(FLIGHTLIB)/rscode
+PIOSSTM32F4XX = $(PIOS)/$(TARGET_ARCHITECTURE)
 PIOSCOMMON = $(PIOS)/Common
 PIOSCOMMONLIB = $(PIOSCOMMON)/Libraries
 APPLIBDIR = $(PIOSSTM32F4XX)/Libraries
@@ -83,8 +91,9 @@ OPUAVOBJINC = $(OPUAVOBJ)/inc
 MAVLINKINC = $(FLIGHTLIB)/mavlink/v1.0/common
 
 # optional component libraries
-include $(APPLIBDIR)/ChibiOS/library.mk
+#include $(APPLIBDIR)/ChibiOS/library.mk
 include $(FLIGHTLIB)/CMSIS3/DSP_Lib/library.mk
+include $(FLIGHTLIB)/lqg_rate/library.mk
 
 
 # List C source files here. (C dependencies are automatically generated.)
@@ -95,7 +104,7 @@ SRC += ${foreach MOD, ${MODULES} ${OPTMODULES}, ${wildcard ${OPMODULEDIR}/${MOD}
 ## OPENPILOT CORE:
 SRC += ${OPMODULEDIR}/System/systemmod.c
 SRC += main.c
-SRC += board.c
+#SRC += board.c
 SRC += pios_board.c
 SRC += pios_usb_board_data.c
 SRC += osd_spicomm.c
@@ -108,6 +117,10 @@ SRC += $(OPUAVOBJ)/eventdispatcher.c
 ifeq ($(DEBUG),YES)
 SRC += $(DEBUG_CM3_DIR)/dcc_stdio.c
 SRC += $(DEBUG_CM3_DIR)/cm3_fault_handlers.c
+endif
+
+ifeq ($(ERASE_FLASH), YES)
+CDEFS += -DERASE_FLASH
 endif
 
 SRC += $(FLIGHTLIB)/paths.c
