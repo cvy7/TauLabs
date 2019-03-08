@@ -3,6 +3,8 @@
  *
  * @file       uavobjectgeneratorflight.cpp
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
+ * @author     dRonin, http://dronin.org Copyright (C) 2015
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2015
  * @brief      produce flight code for uavobjects
  *
  * @see        The GNU Public License (GPL) Version 3
@@ -54,9 +56,7 @@ bool UAVObjectGeneratorFlight::generate(UAVObjectParser* parser,QString template
     for (int objidx = 0; objidx < parser->getNumObjects(); ++objidx) {
         ObjectInfo* info=parser->getObjectByIndex(objidx);
         process_object(info);
-        flightObjInit.append("#ifdef UAVOBJ_INIT_" + info->namelc +"\r\n");
         flightObjInit.append("    " + info->name + "Initialize();\r\n");
-        flightObjInit.append("#endif\r\n");
         objInc.append("#include \"" + info->namelc + ".h\"\r\n");
 	objFileNames.append(" " + info->namelc);
 	objNames.append(" " + info->name);
@@ -272,9 +272,15 @@ bool UAVObjectGeneratorFlight::process_object(ObjectInfo* info)
             {
                 if ( info->fields[n]->type == FIELDTYPE_ENUM )
                 {
+                    int defaultVal;
+                    if (info->fields[n]->parent != NULL)
+                        defaultVal = info->fields[n]->parent->options.indexOf( info->fields[n]->defaultValues[0] );
+                    else
+                        defaultVal = info->fields[n]->options.indexOf( info->fields[n]->defaultValues[0] );
+
                     initfields.append( QString("\tdata.%1 = %2;\r\n")
                                 .arg( info->fields[n]->name )
-                                .arg( info->fields[n]->options.indexOf( info->fields[n]->defaultValues[0] ) ) );
+                                .arg( defaultVal ) );
                 }
                 else if ( info->fields[n]->type == FIELDTYPE_FLOAT32 )
                 {
@@ -296,10 +302,16 @@ bool UAVObjectGeneratorFlight::process_object(ObjectInfo* info)
                 {
                     if ( info->fields[n]->type == FIELDTYPE_ENUM )
                     {
+                        int defaultVal;
+                        if (info->fields[n]->parent != NULL)
+                            defaultVal = info->fields[n]->parent->options.indexOf( info->fields[n]->defaultValues[idx] );
+                        else
+                            defaultVal = info->fields[n]->options.indexOf( info->fields[n]->defaultValues[idx] );
+                        
                         initfields.append( QString("\tdata.%1[%2] = %3;\r\n")
                                     .arg( info->fields[n]->name )
                                     .arg( idx )
-                                    .arg( info->fields[n]->options.indexOf( info->fields[n]->defaultValues[idx] ) ) );
+                                    .arg( defaultVal ) );
                     }
                     else if ( info->fields[n]->type == FIELDTYPE_FLOAT32 )
                     {

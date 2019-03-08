@@ -12,6 +12,9 @@ TOOLS_DIR := $(ROOT_DIR)/tools
 BUILD_DIR := $(ROOT_DIR)/build
 DL_DIR := $(ROOT_DIR)/downloads
 
+export RM := rm
+export CCACHE_BIN := $(shell which ccache 2>/dev/null)
+
 # import macros that are OS specific
 include $(ROOT_DIR)/make/$(OSFAMILY).mk
 
@@ -960,6 +963,7 @@ $(eval $(call SIM_TEMPLATE,simulation,Simulation,'sim ',posix,elf))
 ##############################
 
 ALL_UNITTESTS := logfs i2c_vm misc_math coordinate_conversions error_correcting streamfs dsm timeutils
+ALL_UNITTESTS += statistics
 ALL_PYTHON_UNITTESTS := python_ut_test
 
 UT_OUT_DIR := $(BUILD_DIR)/unit_tests

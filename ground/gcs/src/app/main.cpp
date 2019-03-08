@@ -4,6 +4,7 @@
  * @file       main.cpp
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
  *             Parts by Nokia Corporation (qt-info@nokia.com) Copyright (C) 2009.
+ * @author     dRonin, http://dronin.org Copyright (C) 2015
  * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013-2015
  * @brief      Main() file
  * @see        The GNU Public License (GPL) Version 3
@@ -61,9 +62,6 @@
 #ifndef _MSC_VER
 #undef USE_CRASHREPORTING
 #endif
-#endif
-#ifdef Q_OS_MAC
-#undef USE_CRASHREPORTING
 #endif
 
 enum { OptionIndent = 4, DescriptionIndent = 24 };
@@ -263,8 +261,12 @@ int main(int argc, char **argv)
         // fix Mac OS X 10.9 (mavericks) font issue
         // https://bugreports.qt-project.org/browse/QTBUG-32789
         QFont::insertSubstitution(".Lucida Grande UI", "Lucida Grande");
+
+        // This setting makes GCS process events when backgrounded
+        QSettings().setValue(QString("NSAppSleepDisabled"), true);
     }
 #endif
+
 #ifdef Q_OS_LINUX
     QApplication::setAttribute(Qt::AA_X11InitThreads, true);
     // This should have faster performance on linux
@@ -398,6 +400,9 @@ int main(int argc, char **argv)
         return sendArguments(app, pluginManager.arguments()) ? 0 : -1;
 
     QObject::connect(&pluginManager,SIGNAL(splashMessages(QString)),&splash,SLOT(showMessage(const QString)));
+    QObject::connect(&pluginManager,SIGNAL(hideSplash()),&splash,SLOT(hide()));
+    QObject::connect(&pluginManager,SIGNAL(showSplash()),&splash,SLOT(show()));
+
     pluginManager.loadPlugins();
     if (coreplugin->hasError()) {
         displayError(msgCoreLoadFailure(coreplugin->errorString()));

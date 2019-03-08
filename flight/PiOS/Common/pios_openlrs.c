@@ -86,7 +86,7 @@ const struct rfm22_modem_regs {
   { 125000, 0x8a, 0x40, 0x0a, 0x60, 0x01, 0x55, 0x55, 0x02, 0xad, 0x1e, 0x20, 0x00, 0x00, 0x23, 0xc8 },
 };
 
-const static uint8_t pktsizes[8] = { 0, 7, 11, 12, 16, 17, 21, 0 };
+static const uint8_t pktsizes[8] = { 0, 7, 11, 12, 16, 17, 21, 0 };
 
 static const uint8_t OUT_FF[64] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -106,6 +106,54 @@ const uint32_t packet_timeout_us = 1000;
 
 const struct rfm22_modem_regs bind_params =
 { 9600, 0x05, 0x40, 0x0a, 0xa1, 0x20, 0x4e, 0xa5, 0x00, 0x20, 0x24, 0x4e, 0xa5, 0x2c, 0x23, 0x30 };
+
+static uint32_t minFreq(HwSharedRfBandOptions band) {
+	switch (band) {
+		default:
+		case HWSHARED_RFBAND_433:
+			return MIN_RFM_FREQUENCY_433;
+		case HWSHARED_RFBAND_868:
+			return MIN_RFM_FREQUENCY_868;
+		case HWSHARED_RFBAND_915:
+			return MIN_RFM_FREQUENCY_915;
+	}
+}
+
+static uint32_t maxFreq(HwSharedRfBandOptions band) {
+	switch (band) {
+		default:
+		case HWSHARED_RFBAND_433:
+			return MAX_RFM_FREQUENCY_433;
+		case HWSHARED_RFBAND_868:
+			return MAX_RFM_FREQUENCY_868;
+		case HWSHARED_RFBAND_915:
+			return MAX_RFM_FREQUENCY_915;
+	}
+}
+
+static uint32_t defCarrierFreq(HwSharedRfBandOptions band) {
+	switch (band) {
+		default:
+		case HWSHARED_RFBAND_433:
+			return DEFAULT_CARRIER_FREQUENCY_433;
+		case HWSHARED_RFBAND_868:
+			return DEFAULT_CARRIER_FREQUENCY_868;
+		case HWSHARED_RFBAND_915:
+			return DEFAULT_CARRIER_FREQUENCY_915;
+	}
+}
+
+static uint32_t bindingFreq(HwSharedRfBandOptions band) {
+	switch (band) {
+		default:
+		case HWSHARED_RFBAND_433:
+			return BINDING_FREQUENCY_433;
+		case HWSHARED_RFBAND_868:
+			return BINDING_FREQUENCY_868;
+		case HWSHARED_RFBAND_915:
+			return BINDING_FREQUENCY_915;
+	}
+}
 
 /*****************************************************************************
 * OpenLRS data formatting utilities
@@ -265,6 +313,14 @@ static void setModemRegs(struct pios_openlrs_dev *openlrs_dev, const struct rfm2
 
 static void rfmSetCarrierFrequency(struct pios_openlrs_dev *openlrs_dev, uint32_t f)
 {
+	/* Protect ourselves from out-of-band frequencies.  Ideally we'd latch
+	 * an error here and prevent tx, but this is good enough to protect
+	 * the hardware. */
+	if ((f < minFreq(openlrs_dev->band)) ||
+			(f > maxFreq(openlrs_dev->band))) {
+		f = defCarrierFreq(openlrs_dev->band);
+	}
+
 	DEBUG_PRINTF(3,"rfmSetCarrierFrequency %d\r\n", f);
 	uint16_t fb, fc, hbsel;
 	if (f < 480000000) {
@@ -371,7 +427,7 @@ static void init_rfm(struct pios_openlrs_dev *openlrs_dev, uint8_t isbind)
 
 	rfm22_releaseBus(openlrs_dev);
 
-	rfmSetCarrierFrequency(openlrs_dev, isbind ? BINDING_FREQUENCY : openlrs_dev->bind_data.rf_frequency);
+	rfmSetCarrierFrequency(openlrs_dev, isbind ? bindingFreq(openlrs_dev->band) : openlrs_dev->bind_data.rf_frequency);
 }
 
 static void to_rx_mode(struct pios_openlrs_dev *openlrs_dev)
@@ -886,8 +942,8 @@ static void pios_openlrs_rx_loop(struct pios_openlrs_dev *openlrs_dev)
 						FlightBatteryStateGet(&bat);
 						// FrSky protocol normally uses 3.3V at 255 but
 						// divider from display can be set internally
-						tx_buf[2] = (uint8_t) bat.Voltage / 25.0f * 255;
-						tx_buf[3] = (uint8_t) bat.Current / 60.0f * 255;
+						tx_buf[2] = (uint8_t) (bat.Voltage / 25.0f * 255);
+						tx_buf[3] = (uint8_t) (bat.Current / 60.0f * 255);
 					} else {
 						tx_buf[2] = 0; // these bytes carry analog info. package
 						tx_buf[3] = 0; // battery here
@@ -1008,6 +1064,10 @@ uint8_t PIOS_OpenLRS_RSSI_Get(void)
 	if(openlrs_status.FailsafeActive == OPENLRSSTATUS_FAILSAFEACTIVE_ACTIVE)
 		return 0;
 	else {
+		// Check object handle exists
+		if (OpenLRSHandle() == NULL)
+			return 0;
+
 		OpenLRSData openlrs_data;
 		OpenLRSGet(&openlrs_data);
 		
@@ -1077,7 +1137,8 @@ static struct pios_openlrs_dev * g_openlrs_dev;
  */
 int32_t PIOS_OpenLRS_Init(uintptr_t * openlrs_id, uint32_t spi_id,
 			 uint32_t slave_num,
-			 const struct pios_openlrs_cfg *cfg)
+			 const struct pios_openlrs_cfg *cfg,
+			 HwSharedRfBandOptions rf_band)
 {
 	PIOS_DEBUG_Assert(rfm22b_id);
 	PIOS_DEBUG_Assert(cfg);
@@ -1094,6 +1155,9 @@ int32_t PIOS_OpenLRS_Init(uintptr_t * openlrs_id, uint32_t spi_id,
 	openlrs_dev->slave_num = slave_num;
 	openlrs_dev->spi_id = spi_id;
 
+	// and the frequency
+	openlrs_dev->band = rf_band;
+
 	// Before initializing everything, make sure device found
 	uint8_t device_type = rfm22_read(openlrs_dev, RFM22_DEVICE_TYPE) & RFM22_DT_MASK;
 	if (device_type != 0x08)
@@ -1103,7 +1167,7 @@ int32_t PIOS_OpenLRS_Init(uintptr_t * openlrs_id, uint32_t spi_id,
 	openlrs_dev->rx_in_cb = NULL;
 	openlrs_dev->tx_out_cb = NULL;
 
-	// Initialzie the PPM callback.
+	// Initialize the "PPM" callback.
 	openlrs_dev->openlrs_rcvr_id = 0;
 
 	OpenLRSInitialize();

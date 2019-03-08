@@ -70,6 +70,7 @@ struct FieldInfo_s {
     bool defaultElementNames;
     QStringList defaultValues;
     QString limitValues;
+    QString description;
 
     FieldInfo *parent;
     ObjectInfo *parentObj;
@@ -164,6 +165,7 @@ private:
     quint32 updateHash(QString& value, quint32 hash);
     int resolveFieldParent(ObjectInfo *item, FieldInfo *field);
     int checkDefaultValues(FieldInfo *field);
+    QStringList parseDefaults(const QDomNode &elemAttr);
 };
 
 #endif // UAVOBJECTPARSER_H

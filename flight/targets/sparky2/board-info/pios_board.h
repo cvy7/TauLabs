@@ -117,6 +117,7 @@ extern uintptr_t pios_com_picoc_id;
 extern uintptr_t pios_com_debug_id;
 extern uintptr_t pios_com_frsky_sport_id;
 extern uintptr_t pios_com_spiflash_logging_id;
+extern uintptr_t pios_com_openlog_logging_id;
 
 #define PIOS_COM_GPS                    (pios_com_gps_id)
 #define PIOS_COM_TELEM_USB              (pios_com_telem_usb_id)
@@ -130,7 +131,7 @@ extern uintptr_t pios_com_spiflash_logging_id;
 #define PIOS_COM_PICOC                  (pios_com_picoc_id)
 #define PIOS_COM_DEBUG                  (pios_com_debug_id)
 #define PIOS_COM_FRSKY_SPORT            (pios_com_frsky_sport_id)
-#define PIOS_COM_OPENLOG                (uintptr_t)(NULL)
+#define PIOS_COM_OPENLOG                (pios_com_openlog_logging_id)
 #define PIOS_COM_SPIFLASH               (pios_com_spiflash_logging_id)
 
 #define DEBUG_LEVEL 0
@@ -241,28 +242,9 @@ extern uint32_t pios_packet_handler;
 
 //-------------------------
 // ADC
-// PIOS_ADC_PinGet(0) = Current sensor
-// PIOS_ADC_PinGet(1) = Voltage sensor
-// PIOS_ADC_PinGet(4) = VREF
-// PIOS_ADC_PinGet(5) = Temperature sensor
 //-------------------------
-#define PIOS_DMA_PIN_CONFIG                                                                 \
-{                                                                                           \
-	{GPIOC, GPIO_Pin_3,     ADC_Channel_13},                                                \
-	{GPIOC, GPIO_Pin_2,     ADC_Channel_12},                                                \
-	{NULL,  0,              ADC_Channel_Vrefint},           /* Voltage reference */         \
-	{NULL,  0,              ADC_Channel_TempSensor},        /* Temperature sensor */        \
-	{GPIOC, GPIO_Pin_2,     ADC_Channel_12}  \
-}
-
-/* we have to do all this to satisfy the PIOS_ADC_MAX_SAMPLES define in pios_adc.h */
-/* which is annoying because this then determines the rate at which we generate buffer turnover events */
-/* the objective here is to get enough buffer space to support 100Hz averaging rate */
-#define PIOS_ADC_NUM_CHANNELS           4
 #define PIOS_ADC_MAX_OVERSAMPLING       2
-#define PIOS_ADC_USE_ADC2               0
-
-#define VREF_PLUS			3.3
+#define VREF_PLUS                     3.3
 
 //-------------------------
 // USB

@@ -1,11 +1,11 @@
 BOARD_TYPE          := 0x85
 BOARD_REVISION      := 0x01
-# Previous version was 0x081, 0x082 introduces partition extensions and forced boot from bkp registers
-BOOTLOADER_VERSION  := 0x82
+BOOTLOADER_VERSION  := 0x83
 HW_TYPE             := 0x01
 
 MCU                 := cortex-m4
 CHIP                := STM32F407VGT
+STM32_TYPE          := STM32F40_41xxx
 BOARD               := STM32F4xx_DISCOVERYF4
 MODEL               := HD
 MODEL_SUFFIX        := 

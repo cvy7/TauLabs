@@ -89,6 +89,8 @@ bool SparkyBGC::queryCapabilities(BoardCapabilities capability)
         return true;
     case BOARD_CAPABILITIES_RADIO:
         return false;
+    case BOARD_CAPABILITIES_OSD:
+        return false;
     }
     return false;
 }
@@ -228,4 +230,12 @@ QWidget * SparkyBGC::getBoardConfiguration(QWidget *parent, bool connected)
 {
     Q_UNUSED(connected);
     return new SparkyBgcConfiguration(parent);
+
+}
+
+
+QStringList SparkyBGC::getAdcNames()
+{
+    // TODO: Confirm with @peabody124 if this is correct
+    return QStringList() << "VBAT" << "Current" << "RSSI";
 }

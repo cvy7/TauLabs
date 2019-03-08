@@ -193,10 +193,12 @@ static int32_t SensorsInitialize(void)
  */
 static int32_t SensorsStart(void)
 {
+	// Watchdog must be registered before starting task
+	PIOS_WDG_RegisterFlag(PIOS_WDG_SENSORS);
+
 	// Start main task
 	sensorsTaskHandle = PIOS_Thread_Create(SensorsTask, "Sensors", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
 	TaskMonitorAdd(TASKINFO_RUNNING_SENSORS, sensorsTaskHandle);
-	PIOS_WDG_RegisterFlag(PIOS_WDG_SENSORS);
 
 	return 0;
 }
@@ -298,11 +300,12 @@ static void SensorsTask(void *parameters)
 		}
 #endif /* PIOS_INCLUDE_RANGEFINDER */
 
+		bool test_good_run = good_runs > REQUIRED_GOOD_CYCLES;
 		#if defined(AQ32)
-		if ((good_runs > REQUIRED_GOOD_CYCLES) && !external_mag_fail)
-		#else
-		if (good_runs > REQUIRED_GOOD_CYCLES)
+		test_good_run = test_good_run && !external_mag_fail;
 		#endif
+
+		if (test_good_run)
 			AlarmsClear(SYSTEMALARMS_ALARM_SENSORS);
 		else
 			good_runs++;

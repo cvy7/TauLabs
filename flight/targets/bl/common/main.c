@@ -49,7 +49,13 @@ extern void PIOS_Board_Init(void);
 #define BL_DETECT_BREAK_TO_BL_TIMER MSEC_TO_USEC(500)
 #endif
 
-#define BL_WAIT_FOR_DFU_TIMER SEC_TO_USEC(6)
+// allow altering bootloader delay
+#ifndef DFU_PAUSE_DELAY_MS
+#define DFU_PAUSE_DELAY_MS 6000
+#endif
+
+#define BL_WAIT_FOR_DFU_TIMER MSEC_TO_USEC(DFU_PAUSE_DELAY_MS)
+
 #define BL_RECOVER_FROM_FAULT_TIMER SEC_TO_USEC(10)
 
 enum bl_states {
@@ -149,7 +155,7 @@ static void go_write_in_progress(struct bl_fsm_context * context);
 static void go_dfu_operation_ok(struct bl_fsm_context * context);
 static void go_dfu_operation_failed(struct bl_fsm_context * context);
 
-const static struct bl_transition bl_transitions[BL_STATE_NUM_STATES] = {
+static const struct bl_transition bl_transitions[BL_STATE_NUM_STATES] = {
 	[BL_STATE_FSM_FAULT] = {
 		.entry_fn = go_fsm_fault,
 		.next_state = {

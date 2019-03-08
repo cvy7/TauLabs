@@ -150,14 +150,14 @@ static const struct pios_hmc5883_cfg pios_hmc5883_external_cfg = {
 /**
  * Configuration for the MS5611 chip
  */
-#if defined(PIOS_INCLUDE_MS5611)
-#include "pios_ms5611_priv.h"
-static const struct pios_ms5611_cfg pios_ms5611_cfg = {
-    .oversampling             = MS5611_OSR_4096,
+#if defined(PIOS_INCLUDE_MS5XXX)
+#include "pios_ms5xxx_priv.h"
+static const struct pios_ms5xxx_cfg pios_ms5xxx_cfg = {
+    .oversampling             = MS5XXX_OSR_4096,
     .temperature_interleaving = 1,
-    .use_0x76_address         = true,
+    .pios_ms5xxx_model = PIOS_MS5M_MS5611,
 };
-#endif /* PIOS_INCLUDE_MS5611 */
+#endif /* PIOS_INCLUDE_MS5XXX */
 
 bool external_mag_fail;
 
@@ -179,8 +179,8 @@ uintptr_t pios_internal_adc_id;
  *  9 Not Used
  * 10 Not Used
  * 11 Not Used
- * 12 pulses: MS5611  - PIOS_MS5611_Init failed
- * 13 pulses: MS5611  - PIOS_MS5611_Test failed
+ * 12 pulses: MS5611  - PIOS_MS5XXX_I2C_Init failed
+ * 13 pulses: MS5611  - PIOS_MS5XXX_Test failed
  * 14 pulses: ADC     - PIOS_INTERNAL_ADC_Init failed
  * 15 pulses: ADC     - PIOS_ADC_Init failed
  */
@@ -253,6 +253,7 @@ void PIOS_Board_Init(void) {
 
     HwAQ32Initialize();
     ModuleSettingsInitialize();
+	
 #if defined(PIOS_INCLUDE_RTC)
     /* Initialize the real-time clock and its associated tick */
     PIOS_RTC_Init(&pios_rtc_main_cfg);
@@ -391,6 +392,7 @@ void PIOS_Board_Init(void) {
 
     PIOS_HAL_ConfigurePort(hw_uart1,             // port type protocol
             &pios_usart1_cfg,                    // usart_port_cfg
+            &pios_usart1_cfg,                    // frsky usart_port_cfg
             &pios_usart_com_driver,              // com_driver
             NULL,                                // i2c_id
             NULL,                                // i2c_cfg
@@ -410,6 +412,7 @@ void PIOS_Board_Init(void) {
 
     PIOS_HAL_ConfigurePort(hw_uart2,             // port type protocol
             &pios_usart2_cfg,                    // usart_port_cfg
+            &pios_usart2_cfg,                    // frsky usart_port_cfg
             &pios_usart_com_driver,              // com_driver
             NULL,                                // i2c_id
             NULL,                                // i2c_cfg
@@ -429,6 +432,7 @@ void PIOS_Board_Init(void) {
 
     PIOS_HAL_ConfigurePort(hw_uart3,             // port type protocol
             &pios_usart3_cfg,                    // usart_port_cfg
+            &pios_usart3_cfg,                    // frsky usart_port_cfg
             &pios_usart_com_driver,              // com_driver
             NULL,                                // i2c_id 
             NULL,                                // i2c_cfg
@@ -454,6 +458,7 @@ void PIOS_Board_Init(void) {
 
     PIOS_HAL_ConfigurePort(hw_uart4,             // port type protocol
             &pios_usart4_cfg,                    // usart_port_cfg
+            &pios_usart4_cfg,                    // frsky usart_port_cfg
             &pios_usart_com_driver,              // com_driver
             NULL,                                // i2c_id
             NULL,                                // i2c_cfg
@@ -473,6 +478,7 @@ void PIOS_Board_Init(void) {
 
     PIOS_HAL_ConfigurePort(hw_uart6,             // port type protocol
             &pios_usart6_cfg,                    // usart_port_cfg
+            &pios_usart6_cfg,                    // frsky usart_port_cfg
             &pios_usart_com_driver,              // com_driver
             NULL,                                // i2c_id
             NULL,                                // i2c_cfg
@@ -489,6 +495,7 @@ void PIOS_Board_Init(void) {
     /* Configure the rcvr port */
     PIOS_HAL_ConfigurePort(hw_rcvrport,          // port type protocol
             NULL,                                // usart_port_cfg
+            NULL,                                // frsky usart_port_cfg
             NULL,                                // com_driver
             NULL,                                // i2c_id
             NULL,                                // i2c_cfg
@@ -668,10 +675,10 @@ void PIOS_Board_Init(void) {
     //I2C is slow, sensor init as well, reset watchdog to prevent reset here
     PIOS_WDG_Clear();
 
-#if defined(PIOS_INCLUDE_MS5611)
-    if (PIOS_MS5611_Init(&pios_ms5611_cfg, pios_i2c_internal_id) != 0)
+#if defined(PIOS_INCLUDE_MS5XXX)
+    if (PIOS_MS5XXX_I2C_Init(pios_i2c_internal_id, MS5XXX_I2C_ADDR_0x76, &pios_ms5xxx_cfg) != 0)
         panic(12);
-    if (PIOS_MS5611_Test() != 0)
+    if (PIOS_MS5XXX_Test() != 0)
         panic(13);
 #endif
 

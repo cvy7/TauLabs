@@ -31,7 +31,6 @@
 #define PIOS_CONFIG_H
 
 /* Major features */
-#define PIOS_INCLUDE_FREERTOS
 #define PIOS_INCLUDE_BL_HELPER
 
 /* Enable/Disable PiOS Modules */
@@ -64,7 +63,7 @@
 //#define PIOS_INCLUDE_MPXV7002
 #define PIOS_INCLUDE_MPU6050
 #define PIOS_MPU6050_ACCEL
-#define PIOS_INCLUDE_MS5611
+#define PIOS_INCLUDE_MS5XXX
 #define FLASH_FREERTOS
 /* Com systems to include */
 #define PIOS_INCLUDE_COM

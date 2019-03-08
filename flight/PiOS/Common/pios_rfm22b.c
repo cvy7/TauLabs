@@ -101,7 +101,9 @@
 #define TASK_PRIORITY                    PIOS_THREAD_PRIO_HIGHEST	// flight control relevant device driver (ppm link)
 #define RFM22B_DEFAULT_RX_DATARATE       HWSHARED_MAXRFSPEED_9600
 #define RFM22B_DEFAULT_TX_POWER          RFM22_tx_pwr_txpow_0
-#define RFM22B_NOMINAL_CARRIER_FREQUENCY 430000000
+#define RFM22B_NOMINAL_CARRIER_FREQUENCY_433 430000000 /* 430-440MHz */
+#define RFM22B_NOMINAL_CARRIER_FREQUENCY_868 862000000 /* 862-872MHz */
+#define RFM22B_NOMINAL_CARRIER_FREQUENCY_915 904000000 /* 904-914MHz */
 #define RFM22B_LINK_QUALITY_THRESHOLD    20
 #define RFM22B_DEFAULT_MIN_CHANNEL       0
 #define RFM22B_DEFAULT_MAX_CHANNEL       250
@@ -158,27 +160,6 @@ struct pios_rfm22b_transition {
     enum pios_radio_state next_state[RADIO_EVENT_NUM_EVENTS];
 };
 
-// Must ensure these prefilled arrays match the define sizes
-static const uint8_t FULL_PREAMBLE[FIFO_SIZE] = {
-    PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE,
-    PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE,
-    PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE,
-    PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE,
-    PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE,
-    PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE,
-    PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE,
-    PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE,
-    PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE,
-    PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE,
-    PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE,
-    PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE,
-    PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE
-}; // 64 bytes
-
-static const uint8_t HEADER[(TX_PREAMBLE_NIBBLES + 1) / 2 + 2] = {
-    PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, PREAMBLE_BYTE, SYNC_BYTE_1, SYNC_BYTE_2
-};
-
 static const uint8_t OUT_FF[64] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -207,7 +188,7 @@ static enum pios_radio_event rfm22_timeout(struct pios_rfm22b_dev *rfm22b_dev);
 static enum pios_radio_event rfm22_error(struct pios_rfm22b_dev *rfm22b_dev);
 static enum pios_radio_event rfm22_fatal_error(struct pios_rfm22b_dev *rfm22b_dev);
 static void rfm22b_add_rx_status(struct pios_rfm22b_dev *rfm22b_dev, enum pios_rfm22b_rx_packet_status status);
-static void rfm22_setNominalCarrierFrequency(struct pios_rfm22b_dev *rfm22b_dev, uint8_t init_chan);
+static void rfm22_setNominalCarrierFrequency(struct pios_rfm22b_dev *rfm22b_dev, uint8_t init_chan, uint32_t frequency_hz);
 static bool rfm22_setFreqHopChannel(struct pios_rfm22b_dev *rfm22b_dev, uint8_t channel);
 static void rfm22_calculateLinkQuality(struct pios_rfm22b_dev *rfm22b_dev);
 static bool rfm22_setConnected(struct pios_rfm22b_dev *rfm22b_dev, bool);
@@ -387,10 +368,12 @@ static bool init_requested;
  * @param[in] spi_id  The SPI bus index.
  * @param[in] slave_num  The SPI bus slave number.
  * @param[in] cfg  The device configuration.
+ * @param[in] band  The frequency band to operate on
  */
 int32_t PIOS_RFM22B_Init(uint32_t * rfm22b_id, uint32_t spi_id,
 			 uint32_t slave_num,
-			 const struct pios_rfm22b_cfg *cfg)
+			 const struct pios_rfm22b_cfg *cfg,
+			 HwSharedRfBandOptions band)
 {
 	PIOS_DEBUG_Assert(rfm22b_id);
 	PIOS_DEBUG_Assert(cfg);
@@ -406,6 +389,25 @@ int32_t PIOS_RFM22B_Init(uint32_t * rfm22b_id, uint32_t spi_id,
 	// Store the SPI handle
 	rfm22b_dev->slave_num = slave_num;
 	rfm22b_dev->spi_id = spi_id;
+
+	uint32_t base_freq;
+
+	// And the frequency
+	switch (band) {
+		case HWSHARED_RFBAND_BOARDDEFAULT:
+		case HWSHARED_RFBAND_433:
+		default:
+			base_freq = RFM22B_NOMINAL_CARRIER_FREQUENCY_433;
+			break;
+		case HWSHARED_RFBAND_868:
+			base_freq = RFM22B_NOMINAL_CARRIER_FREQUENCY_868;
+			break;
+		case HWSHARED_RFBAND_915:
+			base_freq = RFM22B_NOMINAL_CARRIER_FREQUENCY_915;
+			break;
+	}
+
+	rfm22b_dev->base_freq = base_freq;
 
 	// Before initializing everything, make sure device found
 	uint8_t device_type = rfm22_read(rfm22b_dev, RFM22_DEVICE_TYPE) & RFM22_DT_MASK;
@@ -1245,6 +1247,25 @@ static void pios_rfm22_task(void *parameters)
 	}
 }
 
+uint8_t PIOS_RFM22B_RSSI_Get(void)
+{
+	if (!PIOS_RFM22B_Validate(g_rfm22b_dev)) {
+		return 0;
+	}
+
+	// Use a similar metric to OpenLRS "Combined" RSSI. If link quality reflects
+	// missing packets that scale RSSI less than 128
+	if (g_rfm22b_dev->stats.link_quality != 127)
+		return g_rfm22b_dev->stats.link_quality;
+
+	// Converting the RSSI to the same scale as with OpenLRS so add back
+	// the 122 used to convert the raw register in half into dBm, and then
+	// add 128 because we use (128,255) as the range for good RSSI when LQ
+	// is perfect. At this point and RSSI of 150 reflects -100 dBm (very bad)
+	// and 230 reflects -20 dBm (max possible register)
+	return (uint8_t) ((int32_t) g_rfm22b_dev->rssi_dBm) + 122 + 128;
+}
+
 /*****************************************************************************
 * The State Machine Functions
 *****************************************************************************/
@@ -1555,7 +1576,7 @@ static enum pios_radio_event rfm22_init(struct pios_rfm22b_dev *rfm22b_dev)
 	PIOS_Thread_Sleep(1);
 
 	// Initialize the frequency and datarate to te default.
-	rfm22_setNominalCarrierFrequency(rfm22b_dev, 0);
+	rfm22_setNominalCarrierFrequency(rfm22b_dev, 0, rfm22b_dev->base_freq);
 	pios_rfm22_setDatarate(rfm22b_dev);
 
 	return RADIO_EVENT_INITIALIZED;
@@ -1649,10 +1670,9 @@ static void pios_rfm22_setDatarate(struct pios_rfm22b_dev *rfm22b_dev)
  */
 static void rfm22_setNominalCarrierFrequency(struct pios_rfm22b_dev
 					     *rfm22b_dev,
-					     uint8_t init_chan)
+					     uint8_t init_chan,
+					     uint32_t frequency_hz)
 {
-	// Set the frequency channels to start at 430MHz
-	uint32_t frequency_hz = RFM22B_NOMINAL_CARRIER_FREQUENCY;
 	// The step size is 10MHz / 250 channels = 40khz, and the step size is specified in 10khz increments.
 	uint8_t freq_hop_step_size = 4;
 
@@ -1680,7 +1700,6 @@ static void rfm22_setNominalCarrierFrequency(struct pios_rfm22b_dev
 	rfm22_write(rfm22b_dev, RFM22_frequency_hopping_step_size,
 		    freq_hop_step_size);
 
-	// frequency hopping channel (0-255)
 	rfm22b_dev->frequency_step_size = 156.25f * hbsel;
 
 	// frequency hopping channel (0-255)
@@ -2228,7 +2247,7 @@ static void rfm22_synchronizeClock(struct pios_rfm22b_dev *rfm22b_dev)
 	uint16_t time_delta = start_time % frequency_hop_cycle_time;
 
 	// Calculate the adjustment for the preamble
-	uint8_t offset = (uint8_t) ceil(35000.0F / data_rate[rfm22b_dev->datarate]);
+	uint8_t offset = (uint8_t) ceilf(35000.0F / data_rate[rfm22b_dev->datarate]);
 
 	rfm22b_dev->time_delta = frequency_hop_cycle_time - time_delta + offset;
 }

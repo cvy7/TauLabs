@@ -14,7 +14,8 @@
  *
  * @file       stabilization.c
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2014
+ * @author     dRonin, http://dronin.org Copyright (C) 2015
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2015
  * @brief      Attitude stabilization.
  *
  * @see        The GNU Public License (GPL) Version 3
@@ -146,10 +147,13 @@ int32_t StabilizationStart()
 	StabilizationSettingsConnectCallback(SettingsUpdatedCb);
 	TrimAnglesSettingsConnectCallback(SettingsUpdatedCb);
 
+	// Watchdog must be registered before starting task
+	PIOS_WDG_RegisterFlag(PIOS_WDG_STABILIZATION);
+
 	// Start main task
 	taskHandle = PIOS_Thread_Create(stabilizationTask, "Stabilization", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
 	TaskMonitorAdd(TASKINFO_RUNNING_STABILIZATION, taskHandle);
-	PIOS_WDG_RegisterFlag(PIOS_WDG_STABILIZATION);
+
 	return 0;
 }
 
@@ -557,8 +561,8 @@ static void stabilizationTask(void* parameters)
 							roll_scale = 0.25f;
 						if (pitch_scale > 0.25f)
 							pitch_scale = 0.25f;
-						if (yaw_scale > 0.25f)
-							yaw_scale = 0.2f;
+						if (yaw_scale > 0.45f)
+							yaw_scale = 0.45f;
 
 						switch(ident_iteration & 0x07) {
 							case 0:

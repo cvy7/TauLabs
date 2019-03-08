@@ -102,13 +102,14 @@ static const struct pios_hmc5883_cfg pios_hmc5883_external_cfg = {
 /**
  * Configuration for the MS5611 chip
  */
-#if defined(PIOS_INCLUDE_MS5611)
-#include "pios_ms5611_priv.h"
-static const struct pios_ms5611_cfg pios_ms5611_cfg = {
-	.oversampling = MS5611_OSR_1024,
+#if defined(PIOS_INCLUDE_MS5XXX)
+#include "pios_ms5xxx_priv.h"
+static const struct pios_ms5xxx_cfg pios_ms5xxx_cfg = {
+	.oversampling = MS5XXX_OSR_1024,
 	.temperature_interleaving = 1,
+	.pios_ms5xxx_model = PIOS_MS5M_MS5611,
 };
-#endif /* PIOS_INCLUDE_MS5611 */
+#endif /* PIOS_INCLUDE_MS5XXX */
 
 /**
  * Configuration for the MPU6000 chip
@@ -370,6 +371,7 @@ void PIOS_Board_Init(void) {
 
 	PIOS_HAL_ConfigurePort(hw_uart1,             // port type protocol
 			&pios_usart1_cfg,                    // usart_port_cfg
+			&pios_usart1_cfg,                    // frsky usart_port_cfg
 			&pios_usart_com_driver,              // com_driver
 			&pios_i2c_usart1_adapter_id,         // i2c_id
 			&pios_i2c_usart1_adapter_cfg,        // i2c_cfg
@@ -389,6 +391,7 @@ void PIOS_Board_Init(void) {
 
 	PIOS_HAL_ConfigurePort(hw_uart2,             // port type protocol
 			&pios_usart2_cfg,                    // usart_port_cfg
+			&pios_usart2_cfg,                    // frsky usart_port_cfg
 			&pios_usart_com_driver,              // com_driver
 			NULL,                                // i2c_id
 			NULL,                                // i2c_cfg
@@ -408,6 +411,7 @@ void PIOS_Board_Init(void) {
 
 	PIOS_HAL_ConfigurePort(hw_uart3,             // port type protocol
 			&pios_usart3_cfg,                    // usart_port_cfg
+			&pios_usart3_cfg,                    // frsky usart_port_cfg
 			&pios_usart_com_driver,              // com_driver
 			&pios_i2c_usart3_adapter_id,         // i2c_id
 			&pios_i2c_usart3_adapter_cfg,        // i2c_cfg
@@ -427,6 +431,7 @@ void PIOS_Board_Init(void) {
 
 	PIOS_HAL_ConfigurePort(hw_uart4,             // port type protocol
 			&pios_usart4_cfg,                    // usart_port_cfg
+			&pios_usart4_cfg,                    // frsky usart_port_cfg
 			&pios_usart_com_driver,              // com_driver
 			NULL,                                // i2c_id
 			NULL,                                // i2c_cfg
@@ -446,6 +451,7 @@ void PIOS_Board_Init(void) {
 
 	PIOS_HAL_ConfigurePort(hw_uart5,             // port type protocol
 			&pios_usart5_cfg,                    // usart_port_cfg
+			&pios_usart5_cfg,                    // frsky usart_port_cfg
 			&pios_usart_com_driver,              // com_driver
 			NULL,                                // i2c_id
 			NULL,                                // i2c_cfg
@@ -470,6 +476,7 @@ void PIOS_Board_Init(void) {
 	case HWQUANTON_RCVRPORT_PWM:
 		PIOS_HAL_ConfigurePort(HWSHARED_PORTTYPES_PWM,  // port type protocol
 				NULL,                                   // usart_port_cfg
+				NULL,                                   // frsky usart_port_cfg
 				NULL,                                   // com_driver
 				NULL,                                   // i2c_id
 				NULL,                                   // i2c_cfg
@@ -487,6 +494,7 @@ void PIOS_Board_Init(void) {
 	case HWQUANTON_RCVRPORT_PWMADC:
 		PIOS_HAL_ConfigurePort(HWSHARED_PORTTYPES_PWM,  // port type protocol
 				NULL,                                   // usart_port_cfg
+				NULL,                                   // frsky usart_port_cfg
 				NULL,                                   // com_driver
 				NULL,                                   // i2c_id
 				NULL,                                   // i2c_cfg
@@ -507,6 +515,7 @@ void PIOS_Board_Init(void) {
 	case HWQUANTON_RCVRPORT_PPMOUTPUTSADC:
 		PIOS_HAL_ConfigurePort(HWSHARED_PORTTYPES_PPM,  // port type protocol
 				NULL,                                   // usart_port_cfg
+				NULL,                                   // frsky usart_port_cfg
 				NULL,                                   // com_driver
 				NULL,                                   // i2c_id
 				NULL,                                   // i2c_cfg
@@ -524,6 +533,7 @@ void PIOS_Board_Init(void) {
 	case HWQUANTON_RCVRPORT_PPMPWM:
 		PIOS_HAL_ConfigurePort(HWSHARED_PORTTYPES_PPM,  // port type protocol
 				NULL,                                   // usart_port_cfg
+				NULL,                                   // frsky usart_port_cfg
 				NULL,                                   // com_driver
 				NULL,                                   // i2c_id
 				NULL,                                   // i2c_cfg
@@ -539,6 +549,7 @@ void PIOS_Board_Init(void) {
 
 		PIOS_HAL_ConfigurePort(HWSHARED_PORTTYPES_PWM,  // port type protocol
 				NULL,                                   // usart_port_cfg
+				NULL,                                   // frsky usart_port_cfg
 				NULL,                                   // com_driver
 				NULL,                                   // i2c_id
 				NULL,                                   // i2c_cfg
@@ -556,6 +567,7 @@ void PIOS_Board_Init(void) {
 	case HWQUANTON_RCVRPORT_PPMPWMADC:
 		PIOS_HAL_ConfigurePort(HWSHARED_PORTTYPES_PPM,  // port type protocol
 				NULL,                                   // usart_port_cfg
+				NULL,                                   // frsky usart_port_cfg
 				NULL,                                   // com_driver
 				NULL,                                   // i2c_id
 				NULL,                                   // i2c_cfg
@@ -571,6 +583,7 @@ void PIOS_Board_Init(void) {
 
 		PIOS_HAL_ConfigurePort(HWSHARED_PORTTYPES_PWM,  // port type protocol
 				NULL,                                   // usart_port_cfg
+				NULL,                                   // frsky usart_port_cfg
 				NULL,                                   // com_driver
 				NULL,                                   // i2c_id
 				NULL,                                   // i2c_cfg
@@ -759,10 +772,10 @@ void PIOS_Board_Init(void) {
 	//I2C is slow, sensor init as well, reset watchdog to prevent reset here
 	PIOS_WDG_Clear();
 
-#if defined(PIOS_INCLUDE_MS5611)
-	if (PIOS_MS5611_Init(&pios_ms5611_cfg, pios_i2c_internal_adapter_id) != 0)
+#if defined(PIOS_INCLUDE_MS5XXX)
+	if (PIOS_MS5XXX_I2C_Init(pios_i2c_internal_adapter_id, MS5XXX_I2C_ADDR_0x77, &pios_ms5xxx_cfg) != 0)
 		panic(4);
-	if (PIOS_MS5611_Test() != 0)
+	if (PIOS_MS5XXX_Test() != 0)
 		panic(4);
 #endif
 

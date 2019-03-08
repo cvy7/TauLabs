@@ -6,7 +6,8 @@
  * @{
  *
  * @file       pios_board.c
- * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2014
+ * @author     dRonin, http://dronin.org Copyright (C) 2015
+ * @author     Tau Labs, http://taulabs.org, Copyright (C) 2012-2015
  * @brief      The board specific initialization routines
  * @see        The GNU Public License (GPL) Version 3
  *
@@ -48,13 +49,14 @@
 /**
  * Configuration for the MS5611 chip
  */
-#if defined(PIOS_INCLUDE_MS5611)
-#include "pios_ms5611_priv.h"
-static const struct pios_ms5611_cfg pios_ms5611_cfg = {
-	.oversampling = MS5611_OSR_1024,
+#if defined(PIOS_INCLUDE_MS5XXX)
+#include "pios_ms5xxx_priv.h"
+static const struct pios_ms5xxx_cfg pios_ms5xxx_cfg = {
+	.oversampling = MS5XXX_OSR_1024,
 	.temperature_interleaving = 1,
+	.pios_ms5xxx_model = PIOS_MS5M_MS5611,
 };
-#endif /* PIOS_INCLUDE_MS5611 */
+#endif /* PIOS_INCLUDE_MS5XXX */
 
 /**
  * Configuration for the MPU6050 chip
@@ -177,12 +179,12 @@ uintptr_t pios_com_debug_id;
 #endif	/* PIOS_INCLUDE_DEBUG_CONSOLE */
 
 uintptr_t pios_com_aux_id;
-uintptr_t pios_com_telem_rf_id;
 uintptr_t pios_com_can_id;
 uintptr_t pios_uavo_settings_fs_id;
 uintptr_t pios_waypoints_settings_fs_id;
 uintptr_t pios_internal_adc_id;
 uintptr_t pios_can_id;
+uintptr_t pios_com_openlog_logging_id;
 
 /**
  * Indicate a target-specific error code when a component fails to initialize
@@ -379,36 +381,62 @@ void PIOS_Board_Init(void)
 	/* Configure main USART port */
 	uint8_t hw_mainport;
 	HwSparkyMainPortGet(&hw_mainport);
-	PIOS_HAL_ConfigurePort(hw_mainport, &pios_main_usart_cfg,
-	                       &pios_usart_com_driver, NULL, NULL, NULL, NULL,
-	                       PIOS_LED_ALARM,
-	                       &pios_main_dsm_hsum_cfg, &pios_main_dsm_aux_cfg,
-	                       hw_DSMxMode, NULL, NULL, false);
+	
+	PIOS_HAL_ConfigurePort(hw_mainport,          // port type protocol
+	        &pios_main_usart_cfg,                // usart_port_cfg
+	        &pios_main_usart_sport_cfg,          // frsky usart_port_cfg
+	        &pios_usart_com_driver,              // com_driver
+	        NULL,                                // i2c_id
+	        NULL,                                // i2c_cfg 
+	        NULL,                                // ppm_cfg
+	        NULL,                                // pwm_cfg
+	        PIOS_LED_ALARM,                      // led_id
+	        &pios_main_dsm_hsum_cfg,             // usart_dsm_hsum_cfg
+	        &pios_main_dsm_aux_cfg,              // dsm_cfg
+	        hw_DSMxMode,                         // dsm_mode
+	        NULL,                                // sbus_rcvr_cfg
+	        NULL,                                // sbus_cfg  
+	        false);                              // sbus_toggle
 
 	/* Configure FlexiPort */
 	uint8_t hw_flexiport;
 	HwSparkyFlexiPortGet(&hw_flexiport);
-	PIOS_HAL_ConfigurePort(hw_flexiport, &pios_flexi_usart_cfg,
-	                       &pios_usart_com_driver,
-	                       &pios_i2c_flexi_id,
-	                       &pios_i2c_flexi_cfg, NULL, NULL,
-	                       PIOS_LED_ALARM,
-	                       &pios_flexi_dsm_hsum_cfg, &pios_flexi_dsm_aux_cfg,
-	                       hw_DSMxMode, NULL, NULL, false);
+	
+	PIOS_HAL_ConfigurePort(hw_flexiport,         // port type protocol
+	        &pios_flexi_usart_cfg,               // usart_port_cfg
+	        &pios_flexi_usart_sport_cfg,         // frsky usart_port_cfg
+	        &pios_usart_com_driver,              // com_driver
+	        &pios_i2c_flexi_id,                  // i2c_id
+	        &pios_i2c_flexi_cfg,                 // i2c_cfg 
+	        NULL,                                // ppm_cfg
+	        NULL,                                // pwm_cfg
+	        PIOS_LED_ALARM,                      // led_id
+	        &pios_flexi_dsm_hsum_cfg,            // usart_dsm_hsum_cfg 
+	        &pios_flexi_dsm_aux_cfg,             // dsm_cfg
+	        hw_DSMxMode,                         // dsm_mode
+	        NULL,                                // sbus_rcvr_cfg
+	        NULL,                                // sbus_cfg 
+	        false);                              // sbus_toggle
 
 	/* Configure the rcvr port */
 	uint8_t hw_rcvrport;
 	HwSparkyRcvrPortGet(&hw_rcvrport);
-	PIOS_HAL_ConfigurePort(hw_rcvrport,
-	                       NULL, /* XXX TODO: fix as part of DSM refactor */
-	                       &pios_usart_com_driver,
-	                       NULL, NULL,
-	                       &pios_ppm_cfg, NULL,
-	                       PIOS_LED_ALARM,
-	                       &pios_rcvr_dsm_hsum_cfg,
-	                       &pios_rcvr_dsm_aux_cfg,
-	                       hw_DSMxMode, &pios_rcvr_sbus_cfg,
-	                       &pios_rcvr_sbus_aux_cfg, false);
+	
+	PIOS_HAL_ConfigurePort(hw_rcvrport,          // port type protocol
+	        NULL,                                // usart_port_cfg
+	        NULL,                                // frsky usart_port_cfg
+	        &pios_usart_com_driver,              // com_driver
+	        NULL,                                // i2c_id 
+	        NULL,                                // i2c_cfg
+	        &pios_ppm_cfg,                       // ppm_cfg
+	        NULL,                                // pwm_cfg
+	        PIOS_LED_ALARM,                      // led_id
+	        &pios_rcvr_dsm_hsum_cfg,             // usart_dsm_hsum_cfg
+	        &pios_rcvr_dsm_aux_cfg,              // dsm_cfg
+	        hw_DSMxMode,                         // dsm_mode
+	        &pios_rcvr_sbus_cfg,                 // sbus_rcvr_cfg
+	        &pios_rcvr_sbus_aux_cfg,             // sbus_cfg 
+	        false);                              // sbus_toggle
 
 #if defined(PIOS_INCLUDE_GCSRCVR)
 	GCSReceiverInitialize();
@@ -467,7 +495,7 @@ void PIOS_Board_Init(void)
 
 #if defined(PIOS_INCLUDE_ADC)
 	if (number_of_adc_ports > 0) {
-		internal_adc_cfg.number_of_used_pins = number_of_adc_ports;
+		internal_adc_cfg.adc_pin_count = number_of_adc_ports;
 		uint32_t internal_adc_id;
 		if (PIOS_INTERNAL_ADC_Init(&internal_adc_id, &internal_adc_cfg) < 0)
 			PIOS_Assert(0);
@@ -677,9 +705,9 @@ void PIOS_Board_Init(void)
 	//I2C is slow, sensor init as well, reset watchdog to prevent reset here
 	PIOS_WDG_Clear();
 
-#if defined(PIOS_INCLUDE_MS5611)
-	PIOS_MS5611_Init(&pios_ms5611_cfg, pios_i2c_internal_id);
-	if (PIOS_MS5611_Test() != 0)
+#if defined(PIOS_INCLUDE_MS5XXX)
+	PIOS_MS5XXX_I2C_Init(pios_i2c_internal_id, MS5XXX_I2C_ADDR_0x77, &pios_ms5xxx_cfg);
+	if (PIOS_MS5XXX_Test() != 0)
 		panic(4);
 #endif
 
@@ -688,7 +716,7 @@ void PIOS_Board_Init(void)
 #endif
 
 	/* Make sure we have at least one telemetry link configured or else fail initialization */
-	PIOS_Assert(pios_com_telem_rf_id || pios_com_telem_usb_id);
+	PIOS_Assert(pios_com_telem_serial_id || pios_com_telem_usb_id);
 }
 
 /**

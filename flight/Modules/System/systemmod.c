@@ -463,6 +463,7 @@ static void updateStats()
 	SystemStatsGet(&stats);
 	stats.FlightTime = PIOS_Thread_Systime();
 	stats.HeapRemaining = PIOS_heap_get_free_size();
+	stats.FastHeapRemaining = PIOS_fastheap_get_free_size();
 
 	// Get Irq stack status
 	stats.IRQStackRemaining = GetFreeIrqStackSize();
@@ -488,9 +489,9 @@ static void updateStats()
 	idleCounterClear = 1;
 	
 #if defined(PIOS_INCLUDE_ADC) && defined(PIOS_ADC_USE_TEMP_SENSOR)
-	float temp_voltage = 3.3 * PIOS_ADC_DevicePinGet(PIOS_INTERNAL_ADC, 0) / ((1 << 12) - 1);
-	const float STM32_TEMP_V25 = 1.43; /* V */
-	const float STM32_TEMP_AVG_SLOPE = 4.3; /* mV/C */
+	float temp_voltage = 3.3f * PIOS_ADC_DevicePinGet(PIOS_INTERNAL_ADC, 0) / ((1 << 12) - 1);
+	const float STM32_TEMP_V25 = 1.43f; /* V */
+	const float STM32_TEMP_AVG_SLOPE = 4.3f; /* mV/C */
 	stats.CPUTemp = (temp_voltage-STM32_TEMP_V25) * 1000 / STM32_TEMP_AVG_SLOPE + 25;
 #endif
 	SystemStatsSet(&stats);

@@ -581,14 +581,15 @@ endif
 
 # OPENSSL download URL
 ifdef WINDOWS
-  openssl_install: OPENSSL_URL  := https://slproweb.com/download/Win32OpenSSL-1_0_2d.exe
+  openssl_install: OPENSSL_URL  := https://slproweb.com/download/Win32OpenSSL-1_0_2g.exe
 
 openssl_install: OPENSSL_FILE := $(notdir $(OPENSSL_URL))
 OPENSSL_DIR = $(TOOLS_DIR)/win32openssl
 # order-only prereq on directory existance:
 openssl_install : | $(DL_DIR) $(TOOLS_DIR)
 openssl_install: openssl_clean
-	$(V1) curl -L -k -o "$(DL_DIR)/$(OPENSSL_FILE)" "$(OPENSSL_URL)"
+	# Check if the file is already present. If so, run null command (:). If not, grab it with curl
+	$(V1) ! [ -f ./downloads/$(OPENSSL_FILE) ] && curl -L -k -o "$(DL_DIR)/$(OPENSSL_FILE)" "$(OPENSSL_URL)" || :
 	$(V1) ./downloads/$(OPENSSL_FILE) /DIR=$(OPENSSL_DIR) /silent
 else
 openssl_install:

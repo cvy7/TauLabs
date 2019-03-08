@@ -36,6 +36,7 @@
 				<option>PPM</option>
 				<option>S.Bus</option>
 				<option>ADC</option>
+				<option>RFM22B</option>
 				<option>OpenLRS</option>
 				<option>FrSkyPWM</option>
 			</options>
@@ -107,11 +108,11 @@
 			<options>
  				<option>Always Disarmed</option>
 				<option>Always Armed</option>
-				<option>Roll Left</option>
-				<option>Roll Right</option>
-				<option>Yaw Left</option>
-				<option>Yaw Right</option>
-				<option>Corners</option>
+				<option>Roll Left+Throttle</option>
+				<option>Roll Right+Throttle</option>
+				<option>Yaw Left+Throttle</option>
+				<option>Yaw Right+Throttle</option>
+				<option>Corners+Throttle</option>
 				<!-- All switch options must occur at the end and below "switch" because of transmitterControl.c#L310 -->
 				<option>Switch</option>
 				<option>Switch+Delay</option>

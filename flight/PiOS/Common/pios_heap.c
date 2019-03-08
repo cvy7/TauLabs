@@ -202,6 +202,33 @@ size_t PIOS_heap_get_free_size(void)
 	return free_bytes;
 }
 
+
+#if defined(PIOS_INCLUDE_FASTHEAP)
+
+size_t PIOS_fastheap_get_free_size(void)
+{
+#if defined(PIOS_INCLUDE_FREERTOS)
+	PIOS_Thread_Scheduler_Suspend();
+#endif	/* PIOS_INCLUDE_FREERTOS */
+
+	size_t free_bytes = simple_get_free_bytes(&pios_nodma_heap);
+
+#if defined(PIOS_INCLUDE_FREERTOS)
+	PIOS_Thread_Scheduler_Resume();
+#endif	/* PIOS_INCLUDE_FREERTOS */
+
+	return free_bytes;
+}
+
+#else
+
+size_t PIOS_fastheap_get_free_size(void)
+{
+	return 0;
+}
+
+#endif // PIOS_INCLUDE_FASTHEAP
+
 void vPortInitialiseBlocks(void) __attribute__((alias ("PIOS_heap_initialize_blocks")));
 void PIOS_heap_initialize_blocks(void)
 {
@@ -220,6 +247,14 @@ void PIOS_heap_increase_size(size_t bytes)
 #if defined(PIOS_INCLUDE_FREERTOS) || defined(PIOS_INCLUDE_CHIBIOS)
 	PIOS_Thread_Scheduler_Resume();
 #endif	/* PIOS_INCLUDE_FREERTOS || defined(PIOS_INCLUDE_CHIBIOS) */
+}
+
+/* Provide an implementation of _sbrk for library functions.
+ * Right now it returns failure always.
+ */
+void *_sbrk(int incr) {
+	PIOS_Assert(0);
+	return (void *) -1;
 }
 
 /**
