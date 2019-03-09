@@ -30,7 +30,7 @@
 #if !defined(PIOS_INCLUDE_FREERTOS) && !defined(PIOS_INCLUDE_CHIBIOS)
 #error "pios_thread.c requires PIOS_INCLUDE_FREERTOS or PIOS_INCLUDE_CHIBIOS"
 #endif
-
+//#define PIOS_INCLUDE_CHIBIOS
 #if defined(PIOS_INCLUDE_FREERTOS)
 
 #include "FreeRTOS.h"
@@ -203,8 +203,9 @@ void PIOS_Thread_Scheduler_Resume(void)
 
 #elif defined(PIOS_INCLUDE_CHIBIOS)
 
-#define ST2MS(n) (((((n) - 1UL) * 1000UL) / CH_FREQUENCY) + 1UL)
-
+//#define ST2MS(n) (((((n) - 1UL) * 1000UL) / CH_FREQUENCY) + 1UL)
+#define ST2MS(n) (n)
+//Wraparound uint32_t !!!! WTF
 /**
  * Compute size that is at rounded up to the nearest
  * multiple of 8
@@ -318,7 +319,7 @@ void PIOS_Thread_Delete(struct pios_thread *threadp)
  */
 uint32_t PIOS_Thread_Systime(void)
 {
-	return (uint32_t)ST2MS(chTimeNow());
+    return (uint32_t)ST2MS(chTimeNow());
 }
 
 /**

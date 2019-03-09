@@ -63,9 +63,12 @@
  *
  * @api
  */
-#define MS2ST(msec)                                                         \
+/*#define MS2ST(msec)                                                         \
   ((systime_t)(((((uint32_t)(msec)) * ((uint32_t)CH_FREQUENCY) - 1UL) /     \
                 1000UL) + 1UL))
+*/
+#define MS2ST(msec) (msec)
+//Wraparound uint32_t !!!!!! WTF
 
 /**
  * @brief   Microseconds to system ticks.
