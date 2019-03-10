@@ -36,6 +36,8 @@
         <field name="OrbitRadius" units="m" type="float" elements="1" defaultvalue="50" />
 
         <field name="UpdatePeriod" units="ms" type="int16" elements="1" defaultvalue="100"/>
+	<field name="PositionFeedforward" units="s" type="float" elements="1" defaultvalue="0.5" />
+               <!-- The amount of time of the current velocity to feed-forward into position to compensate for turns taking time.-->
         <access gcs="readwrite" flight="readwrite"/>
         <telemetrygcs acked="true" updatemode="onchange" period="0"/>
         <telemetryflight acked="true" updatemode="onchange" period="0"/>
