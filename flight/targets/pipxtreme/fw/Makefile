@@ -30,6 +30,8 @@ include $(BOARD_INFO_DIR)/board-info.mk
 # Set to YES to compile for debugging
 DEBUG ?= NO
 
+RTOS ?= FREERTOS
+
 # Include objects that are just nice information to show
 STACK_DIAGNOSTICS ?= NO
 MIXERSTATUS_DIAGNOSTICS ?= NO
@@ -53,8 +55,9 @@ USE_GPS ?= NO
 USE_I2C ?= YES
 
 # List of modules to include
-OPTMODULES = 
-MODULES = RadioComBridge
+MODULES += ComUsbBridge
+MODULES += RadioComBridge
+MODULES += UAVOTaranis
 
 # Paths
 OPUAVTALKINC = $(OPUAVTALK)/inc
@@ -66,6 +69,8 @@ PIOSINC = $(PIOS)/inc
 PIOSSTM32F10X = $(PIOS)/STM32F10x
 PIOSCOMMON = $(PIOS)/Common
 PIOSCOMMONLIB = $(PIOSCOMMON)/Libraries
+MATHLIB = $(FLIGHTLIB)/math
+MATHLIBINC = $(FLIGHTLIB)/math
 APPLIBDIR = $(PIOSSTM32F10X)/Libraries
 STMLIBDIR = $(APPLIBDIR)
 STMSPDDIR = $(STMLIBDIR)/STM32F10x_StdPeriph_Driver
@@ -75,11 +80,7 @@ STMSPDINCDIR = $(STMSPDDIR)/inc
 STMUSBSRCDIR = $(STMUSBDIR)/src
 STMUSBINCDIR = $(STMUSBDIR)/inc
 CMSISDIR  = $(STMLIBDIR)/CMSIS/Core/CM3
-DOSFSDIR  = $(APPLIBDIR)/dosfs
 MSDDIR  = $(APPLIBDIR)/msd
-RTOSDIR = $(PIOSCOMMON)/Libraries/FreeRTOS
-RTOSSRCDIR = $(RTOSDIR)/Source
-RTOSINCDIR = $(RTOSSRCDIR)/include
 RTOSPORTDIR = $(APPLIBDIR)/FreeRTOS/Source
 
 # List C source files here. (C dependencies are automatically generated.)
@@ -87,7 +88,7 @@ RTOSPORTDIR = $(APPLIBDIR)/FreeRTOS/Source
 
 ifndef TESTAPP
 ## MODULES
-SRC += ${foreach MOD, ${MODULES}, ${wildcard ${OPMODULEDIR}/${MOD}/*.c}}
+SRC += ${foreach MOD, ${MODULES} ${OPTMODULES}, ${wildcard ${OPMODULEDIR}/${MOD}/*.c}}
 ## OPENPILOT CORE:
 SRC += ${OPMODULEDIR}/PipXtreme/pipxtrememod.c
 SRC += main.c
@@ -107,8 +108,15 @@ SRC += $(OPUAVSYNTHDIR)/gcsreceiver.c
 SRC += $(OPUAVSYNTHDIR)/hwtaulink.c
 SRC += $(OPUAVSYNTHDIR)/rfm22bstatus.c
 SRC += $(OPUAVSYNTHDIR)/objectpersistence.c
+SRC += $(OPUAVSYNTHDIR)/modulesettings.c
 SRC += $(OPUAVSYNTHDIR)/rfm22breceiver.c
 SRC += $(OPUAVSYNTHDIR)/radiocombridgestats.c
+
+SRC += $(OPUAVSYNTHDIR)/baroaltitude.c
+SRC += $(OPUAVSYNTHDIR)/flightbatterystate.c
+SRC += $(OPUAVSYNTHDIR)/flightstatus.c
+SRC += $(OPUAVSYNTHDIR)/positionactual.c
+SRC += $(OPUAVSYNTHDIR)/velocityactual.c
 endif
 
 ## PIOS Hardware (STM32F10x)
@@ -144,7 +152,6 @@ SRC += $(PIOSCOMMON)/pios_usb_util.c
 SRC += $(PIOSCOMMON)/pios_delay.c
 SRC += $(PIOSCOMMON)/pios_crc.c
 SRC += $(PIOSCOMMON)/pios_com.c
-SRC += $(PIOSCOMMON)/pios_i2c_esc.c
 SRC += $(PIOSCOMMON)/pios_rcvr.c
 SRC += $(PIOSCOMMON)/pios_flash.c
 SRC += $(PIOSCOMMON)/pios_flashfs_logfs.c
@@ -156,16 +163,18 @@ SRC += $(PIOSCOMMON)/pios_semaphore.c
 SRC += $(PIOSCOMMON)/pios_mutex.c
 SRC += $(PIOSCOMMON)/pios_thread.c
 SRC += $(PIOSCOMMON)/pios_queue.c
+SRC += $(PIOSCOMMON)/pios_hal.c
 
 
 ## Libraries for flight calculations
 SRC += $(FLIGHTLIB)/fifo_buffer.c
 SRC += $(FLIGHTLIB)/taskmonitor.c
-SRC += $(FLIGHTLIB)/aes.c
 ## The Reed-Solomon FEC library
 SRC += $(FLIGHTLIB)/rscode/rs.c
 SRC += $(FLIGHTLIB)/rscode/berlekamp.c
 SRC += $(FLIGHTLIB)/rscode/galois.c
+SRC += $(FLIGHTLIB)/frsky_packing.c
+SRC += $(MATHLIB)/misc_math.c
 
 ## CMSIS for STM32
 include $(PIOSCOMMONLIB)/CMSIS3/library.mk
@@ -198,13 +207,9 @@ SRC += $(STMUSBSRCDIR)/usb_mem.c
 SRC += $(STMUSBSRCDIR)/usb_regs.c
 SRC += $(STMUSBSRCDIR)/usb_sil.c
 
-## RTOS
-SRC += $(RTOSSRCDIR)/list.c
-SRC += $(RTOSSRCDIR)/queue.c
-SRC += $(RTOSSRCDIR)/tasks.c
-
 ## RTOS Portable
 SRC += $(RTOSPORTDIR)/portable/GCC/ARM_CM3/port.c
+EXTRAINCDIRS += $(RTOSPORTDIR)/portable/GCC/ARM_CM3
 
 # List C source files here which must be compiled in ARM-Mode (no -mthumb).
 # use file-extension c for "c-only"-files
@@ -242,6 +247,7 @@ EXTRAINCDIRS  += $(OPUAVOBJINC)
 EXTRAINCDIRS  += $(OPUAVSYNTHDIR)
 EXTRAINCDIRS  += $(PIOS)
 EXTRAINCDIRS  += $(PIOSINC)
+EXTRAINCDIRS  += $(MATHLIBINC)
 EXTRAINCDIRS  += $(FLIGHTLIBINC)
 EXTRAINCDIRS  += $(RSCODEINC)
 EXTRAINCDIRS  += $(PIOSSTM32F10X)
@@ -251,11 +257,8 @@ EXTRAINCDIRS  += $(BOARD_INFO_DIR)
 EXTRAINCDIRS  += $(STMSPDINCDIR)
 EXTRAINCDIRS  += $(STMUSBINCDIR)
 EXTRAINCDIRS  += $(CMSISDIR)
-EXTRAINCDIRS  += $(DOSFSDIR)
 EXTRAINCDIRS  += $(MSDDIR)
-EXTRAINCDIRS  += $(RTOSINCDIR)
 EXTRAINCDIRS  += $(APPLIBDIR)
-EXTRAINCDIRS  += $(RTOSPORTDIR)/portable/GCC/ARM_CM3
 
 EXTRAINCDIRS += ${foreach MOD, ${OPTMODULES} ${MODULES}, ${OPMODULEDIR}/${MOD}/inc} ${OPMODULEDIR}/System/inc
 
@@ -322,6 +325,9 @@ endif
 
 CDEFS += -DEE_BANK_BASE=$(EE_BANK_BASE)
 CDEFS += -DEE_BANK_SIZE=$(EE_BANK_SIZE)
+
+CDEFS += -DPIOS_COM_TELEM_USB_RX_BUF_LEN=256
+CDEFS += -DPIOS_COM_TELEM_USB_TX_BUF_LEN=256
 
 # Declare all non-optional modules as built-in to force inclusion
 CDEFS += $(foreach MOD, $(notdir $(MODULES)), -DMODULE_$(MOD)_BUILTIN)
@@ -412,6 +418,8 @@ ASFLAGS += $(patsubst %,-I%,$(EXTRAINCDIRS))
 
 MATH_LIB = -lm
 
+LIBS += $(UAVOBJLIB)
+
 # Linker flags.
 #  -Wl,...:     tell GCC to pass this to linker.
 #    -Map:      create map file
@@ -428,6 +436,8 @@ LDFLAGS += -Wl,--fatal-warnings
 # Set linker-script name depending on selected submodel name
 LDFLAGS += -T$(LINKERSCRIPTPATH)/link_$(BOARD)_memory.ld
 LDFLAGS += -T$(LINKERSCRIPTPATH)/link_$(BOARD)_sections.ld
+
+NO_AUTO_UAVO=YES
 
 include $(MAKE_INC_DIR)/firmware-common.mk
 

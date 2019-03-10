@@ -45,6 +45,7 @@
 #include "attitudesettings.h"
 #include "flightstatus.h"
 #include "manualcontrolcommand.h"
+#include "misc_math.h"
 #include "coordinate_conversions.h"
 #include <pios_board_info.h>
 #include "pios_queue.h"
@@ -73,21 +74,11 @@ static void AttitudeTask(void *parameters);
 
 static float gyro_correct_int[3] = {0,0,0};
 
-#ifdef COPTERCONTROL
-static struct pios_queue *gyro_queue;
-
-static int32_t updateSensors(AccelsData *, GyrosData *);
-#define ADXL345_ACCEL_SCALE  (GRAVITY * 0.004f)
-/* 0.004f is gravity / LSB */
-
-#endif
-
 static int32_t updateSensorsDigital(AccelsData * accelsData, GyrosData * gyrosData);
 static void updateAttitude(AccelsData *, GyrosData *);
 static void settingsUpdatedCb(UAVObjEvent * objEv);
 static void update_accels(struct pios_sensor_accel_data *accels, AccelsData * accelsData);
 static void update_gyros(struct pios_sensor_gyro_data *gyros, GyrosData * gyrosData);
-static void update_trimming(AccelsData * accelsData);
 static void updateTemperatureComp(float temperature, float *temp_bias);
 
 //! Compute the mean gyro accumulated and assign the bias
@@ -104,7 +95,6 @@ static float accelKp = 0;
 static float accel_alpha = 0;
 static bool accel_filter_enabled = false;
 static float yawBiasRate = 0;
-static const float IDG_GYRO_GAIN = 0.42;
 static float q[4] = {1,0,0,0};
 static float Rsb[3][3]; // Rotation matrix which transforms from the body frame to the sensor board frame
 static int8_t rotate = 0;
@@ -116,23 +106,18 @@ static bool accumulating_gyro = false;
 static uint32_t accumulated_gyro_samples = 0;
 static float accumulated_gyro[3];
 
-// For running trim flights
-static volatile bool trim_requested = false;
-static volatile int32_t trim_accels[3];
-static volatile int32_t trim_samples;
-static int32_t const MAX_TRIM_FLIGHT_SAMPLES = 65535;
-
 /**
  * Initialise the module, called on startup
  * \returns 0 on success or -1 if initialisation failed
  */
 int32_t AttitudeStart(void)
 {
-	
+	// Watchdog must be registered before starting task
+	PIOS_WDG_RegisterFlag(PIOS_WDG_ATTITUDE);
+
 	// Start main task
 	taskHandle = PIOS_Thread_Create(AttitudeTask, "Attitude", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
 	TaskMonitorAdd(TASKINFO_RUNNING_ATTITUDE, taskHandle);
-	PIOS_WDG_RegisterFlag(PIOS_WDG_ATTITUDE);
 	
 	return 0;
 }
@@ -171,8 +156,6 @@ int32_t AttitudeInitialize(void)
 		for(uint8_t j = 0; j < 3; j++)
 			Rsb[i][j] = 0;
 	
-	trim_requested = false;
-	
 	AttitudeSettingsConnectCallback(&settingsUpdatedCb);
 	SensorSettingsConnectCallback(&settingsUpdatedCb);
 	
@@ -188,29 +171,6 @@ static void AttitudeTask(void *parameters)
 {
 	AlarmsClear(SYSTEMALARMS_ALARM_ATTITUDE);
 
-#ifdef COPTERCONTROL
-	// Set critical error and wait until the accel is producing data
-	while(PIOS_ADXL345_FifoElements() == 0) {
-		AlarmsSet(SYSTEMALARMS_ALARM_ATTITUDE, SYSTEMALARMS_ALARM_CRITICAL);
-		PIOS_WDG_UpdateFlag(PIOS_WDG_ATTITUDE);
-	}
-
-	const struct pios_board_info * bdinfo = &pios_board_info_blob;
-
-	bool cc3d = bdinfo->board_rev == 0x02;
-
-	if (!cc3d) {
-#if defined(PIOS_INCLUDE_ADC)
-		// Create queue for passing gyro data, allow 2 back samples in case
-		gyro_queue = PIOS_Queue_Create(1, sizeof(float) * 4);
-		PIOS_Assert(gyro_queue != NULL);
-		PIOS_ADC_SetQueue(PIOS_INTERNAL_ADC,gyro_queue);
-
-		PIOS_SENSORS_SetMaxGyro(500);
-#endif
-	}
-#endif
-	
 	// Force settings update to make sure rotation loaded
 	settingsUpdatedCb(AttitudeSettingsHandle());
 	
@@ -291,14 +251,7 @@ static void AttitudeTask(void *parameters)
 		GyrosData gyros;
 		int32_t retval = 0;
 
-#ifdef COPTERCONTROL
-		if (cc3d)
-			retval = updateSensorsDigital(&accels, &gyros);
-		else
-			retval = updateSensors(&accels, &gyros);
-#else
 		retval = updateSensorsDigital(&accels, &gyros);
-#endif
 
 		// During power on set to angle from accel
 		if (complimentary_filter_status == CF_POWERON) {
@@ -322,71 +275,6 @@ static void AttitudeTask(void *parameters)
 		}
 	}
 }
-
-#ifdef COPTERCONTROL
-/**
- * Get an update from the sensors
- * @param[in] attitudeRaw Populate the UAVO instead of saving right here
- * @return 0 if successfull, -1 if not
- */
-static int32_t updateSensors(AccelsData * accelsData, GyrosData * gyrosData)
-{
-	struct pios_adxl345_data accel_data;
-	float gyro[4];
-
-	// Only wait the time for two nominal updates before setting an alarm
-	if (PIOS_Queue_Receive(gyro_queue, (void * const) gyro, PIOS_INTERNAL_ADC_UPDATE_RATE * 2) == false) {
-		AlarmsSet(SYSTEMALARMS_ALARM_ATTITUDE, SYSTEMALARMS_ALARM_ERROR);
-		return -1;
-	}
-
-	// Do not read raw sensor data in simulation mode
-	if (GyrosReadOnly() || AccelsReadOnly())
-		return 0;
-
-	// No accel data available
-	if(PIOS_ADXL345_FifoElements() == 0)
-		return -1;
-
-	// Convert the ADC data into the standard normalized format
-	struct pios_sensor_gyro_data gyros;
-	gyros.temperature = gyro[0];
-	gyros.x = -(gyro[1] - GYRO_NEUTRAL) * IDG_GYRO_GAIN;
-	gyros.y = (gyro[2] - GYRO_NEUTRAL) * IDG_GYRO_GAIN;
-	gyros.z = -(gyro[3] - GYRO_NEUTRAL) * IDG_GYRO_GAIN;
-
-	// Convert the ADXL345 data into the standard normalized format
-	int32_t x = 0;
-	int32_t y = 0;
-	int32_t z = 0;
-	uint8_t i = 0;
-	uint8_t samples_remaining;
-	do {
-		i++;
-		samples_remaining = PIOS_ADXL345_Read(&accel_data);
-		x +=  accel_data.x;
-		y += -accel_data.y;
-		z += -accel_data.z;
-	} while ( (i < 32) && (samples_remaining > 0) );
-
-	struct pios_sensor_accel_data accels;
-
-	accels.x = ((float) x / i) * ADXL345_ACCEL_SCALE;
-	accels.y = ((float) y / i) * ADXL345_ACCEL_SCALE;
-	accels.z = ((float) z / i) * ADXL345_ACCEL_SCALE;
-
-	// Apply rotation / calibration and assign to the UAVO
-	update_gyros(&gyros, gyrosData);
-	update_accels(&accels, accelsData);
-
-	update_trimming(accelsData);
-
-	GyrosSet(gyrosData);
-	AccelsSet(accelsData);
-
-	return 0;
-}
-#endif
 
 /**
  * Get an update from the sensors
@@ -416,8 +304,6 @@ static int32_t updateSensorsDigital(AccelsData * accelsData, GyrosData * gyrosDa
 	// Update gyros after the accels since the rest of the code expects
 	// the accels to be available first
 	update_gyros(&gyros, gyrosData);
-
-	update_trimming(accelsData);
 
 	GyrosSet(gyrosData);
 	AccelsSet(accelsData);
@@ -551,31 +437,6 @@ static void accumulate_gyro(float gyros_out[3])
 	accumulated_gyro[2] += gyros_out[2];
 }
 
-/**
- * @brief If requested accumulate accel values to calculate level
- * @param[in] accelsData the scaled and normalized accels
- */
-static void update_trimming(AccelsData * accelsData)
-{
-	if (trim_requested) {
-		if (trim_samples >= MAX_TRIM_FLIGHT_SAMPLES) {
-			trim_requested = false;
-		} else {
-			uint8_t armed;
-			float throttle;
-			FlightStatusArmedGet(&armed);
-			ManualControlCommandThrottleGet(&throttle);  // Until flight status indicates airborne
-			if ((armed == FLIGHTSTATUS_ARMED_ARMED) && (throttle > 0)) {
-				trim_samples++;
-				// Store the digitally scaled version since that is what we use for bias
-				trim_accels[0] += accelsData->x;
-				trim_accels[1] += accelsData->y;
-				trim_accels[2] += accelsData->z;
-			}
-		}
-	}
-}
-
 static inline void apply_accel_filter(const float * raw, float * filtered)
 {
 	if(accel_filter_enabled) {
@@ -679,7 +540,7 @@ static void updateAttitude(AccelsData * accelsData, GyrosData * gyrosData)
 	
 	// If quaternion has become inappropriately short or is nan reinit.
 	// THIS SHOULD NEVER ACTUALLY HAPPEN
-	if((fabs(qmag) < 1e-3) || (qmag != qmag)) {
+	if((fabsf(qmag) < 1e-3f) || IS_NOT_FINITE(qmag)) {
 		q[0] = 1;
 		q[1] = 0;
 		q[2] = 0;
@@ -781,52 +642,6 @@ static void settingsUpdatedCb(UAVObjEvent * objEv) {
 		RPY2Quaternion(rpy, rotationQuat);
 		Quaternion2R(rotationQuat, Rsb);
 		rotate = 1;
-	}
-	
-	if (attitudeSettings.TrimFlight == ATTITUDESETTINGS_TRIMFLIGHT_START) {
-		trim_accels[0] = 0;
-		trim_accels[1] = 0;
-		trim_accels[2] = 0;
-		trim_samples = 0;
-		trim_requested = true;
-	} else if (attitudeSettings.TrimFlight == ATTITUDESETTINGS_TRIMFLIGHT_LOAD) {
-		trim_requested = false;
-
-		// Get sensor data  mean 
-		float a_body[3] = { trim_accels[0] / trim_samples,
-			trim_accels[1] / trim_samples,
-			trim_accels[2] / trim_samples
-		};
-
-		// Inverse rotation of sensor data, from body frame into sensor frame
-		float a_sensor[3];
-		rot_mult(Rsb, a_body, a_sensor, false);
-
-		// Temporary variables
-		float psi, theta, phi;
-
-		psi = attitudeSettings.BoardRotation[ATTITUDESETTINGS_BOARDROTATION_YAW] * DEG2RAD / 100.0f;
-
-		float cP = cosf(psi);
-		float sP = sinf(psi);
-
-		// In case psi is too small, we have to use a different equation to solve for theta
-		if (fabsf(psi) > PI / 2)
-			theta = atanf((a_sensor[1] + cP * (sP * a_sensor[0] -
-					 cP * a_sensor[1])) / (sP * a_sensor[2]));
-		else
-			theta = atanf((a_sensor[0] - sP * (sP * a_sensor[0] -
-					 cP * a_sensor[1])) / (cP * a_sensor[2]));
-
-		phi = atan2f((sP * a_sensor[0] - cP * a_sensor[1]) / GRAVITY,
-			   (a_sensor[2] / cosf(theta) / GRAVITY));
-
-		attitudeSettings.BoardRotation[ATTITUDESETTINGS_BOARDROTATION_ROLL] = phi * RAD2DEG * 100.0f;
-		attitudeSettings.BoardRotation[ATTITUDESETTINGS_BOARDROTATION_PITCH] = theta * RAD2DEG * 100.0f;
-
-		attitudeSettings.TrimFlight = ATTITUDESETTINGS_TRIMFLIGHT_NORMAL;
-		AttitudeSettingsSet(&attitudeSettings);
-
 	}
 }
 /**

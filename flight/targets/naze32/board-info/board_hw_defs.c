@@ -237,6 +237,38 @@ const struct pios_flash_partition * PIOS_BOARD_HW_DEFS_GetPartitionTable (uint32
 
 #endif	/* PIOS_INCLUDE_FLASH */
 
+#if defined(PIOS_INCLUDE_ADC)
+#include "pios_adc_priv.h"
+#include "pios_internal_adc_light_priv.h"
+
+/**
+ * ADC0 : PA4 ADC_IN4
+ * ADC1 : PA5 ADC_IN5
+ * ADC2 : PA1 ADC_IN1
+ * ADC3 : PB1 ADC_IN9
+ */
+static const struct pios_internal_adc_cfg internal_adc_cfg = {
+	.dma = {
+		.ahb_clk  = RCC_AHBPeriph_DMA1,
+		.rx = {
+			.channel = DMA1_Channel1,
+			.init    = {
+				.DMA_Priority           = DMA_Priority_High,
+			},
+		}
+	},
+	.adc_pin_count = 4, // this is the max number, can be reduced at runtime (due to port config)
+	.adc_dev_master = ADC1,
+	.adc_pins = {
+		{GPIOA, GPIO_Pin_4, ADC_Channel_4, true},  // VBat
+		{GPIOA, GPIO_Pin_5, ADC_Channel_5, true},  // ADC Pad
+		{GPIOA, GPIO_Pin_1, ADC_Channel_1, true},  // RC IN 2
+		{GPIOB, GPIO_Pin_1, ADC_Channel_9, true},  // RC IN 8
+	}
+};
+
+#endif /* PIOS_INCLUDE_ADC */
+
 #include "pios_tim_priv.h"
 
 static const TIM_TimeBaseInitTypeDef tim_1_2_3_4_time_base = {
@@ -652,7 +684,7 @@ static const struct pios_tim_channel pios_tim_servoport_rcvrport_pins[] = {
 
 #include "pios_usart_priv.h"
 
-static const struct pios_usart_cfg pios_main_usart_cfg = {
+static const struct pios_usart_cfg pios_usart_main_cfg = {
 	.regs  = USART1,
 	.init = {
 		.USART_BaudRate            = 57600,
@@ -687,6 +719,93 @@ static const struct pios_usart_cfg pios_main_usart_cfg = {
 		},
 	},
 };
+
+static const struct pios_usart_cfg pios_usart_rcvrserial_cfg = {
+	.regs  = USART2,
+	.init = {
+		.USART_BaudRate            = 57600,
+		.USART_WordLength          = USART_WordLength_8b,
+		.USART_Parity              = USART_Parity_No,
+		.USART_StopBits            = USART_StopBits_1,
+		.USART_HardwareFlowControl = USART_HardwareFlowControl_None,
+		.USART_Mode                = USART_Mode_Rx | USART_Mode_Tx,
+	},
+	.irq = {
+		.init    = {
+			.NVIC_IRQChannel                   = USART2_IRQn,
+			.NVIC_IRQChannelPreemptionPriority = PIOS_IRQ_PRIO_MID,
+			.NVIC_IRQChannelSubPriority        = 0,
+			.NVIC_IRQChannelCmd                = ENABLE,
+		},
+	},
+	.rx   = {
+		.gpio = GPIOA,
+		.init = {
+			.GPIO_Pin   = GPIO_Pin_3,
+			.GPIO_Speed = GPIO_Speed_2MHz,
+			.GPIO_Mode  = GPIO_Mode_IPU,
+		},
+	},
+	.tx   = {
+		.gpio = GPIOA,
+		.init = {
+			.GPIO_Pin   = GPIO_Pin_2,
+			.GPIO_Speed = GPIO_Speed_2MHz,
+			.GPIO_Mode  = GPIO_Mode_AF_PP,
+		},
+	},
+};
+
+static const struct pios_usart_cfg pios_usart_dsm_hsum_rcvrserial_cfg = {
+	.regs  = USART2,
+	.init = {
+		.USART_BaudRate            = 115200,
+		.USART_WordLength          = USART_WordLength_8b,
+		.USART_Parity              = USART_Parity_No,
+		.USART_StopBits            = USART_StopBits_1,
+		.USART_HardwareFlowControl = USART_HardwareFlowControl_None,
+		.USART_Mode                = USART_Mode_Rx,
+	},
+	.irq = {
+		.init    = {
+			.NVIC_IRQChannel                   = USART2_IRQn,
+			.NVIC_IRQChannelPreemptionPriority = PIOS_IRQ_PRIO_MID,
+			.NVIC_IRQChannelSubPriority        = 0,
+			.NVIC_IRQChannelCmd                = ENABLE,
+		},
+	},
+	.rx   = {
+		.gpio = GPIOA,
+		.init = {
+			.GPIO_Pin   = GPIO_Pin_3,
+			.GPIO_Speed = GPIO_Speed_2MHz,
+			.GPIO_Mode  = GPIO_Mode_IPU,
+		},
+	},
+	.tx   = {
+		.gpio = GPIOA,
+		.init = {
+			.GPIO_Pin   = GPIO_Pin_2,
+			.GPIO_Speed = GPIO_Speed_2MHz,
+			.GPIO_Mode  = GPIO_Mode_AF_PP,
+		},
+	},
+};
+
+#if defined(PIOS_INCLUDE_DSM)
+#include <pios_dsm_priv.h>
+
+static const struct pios_dsm_cfg pios_dsm_rcvrserial_cfg = {
+	.bind = {
+		.gpio = GPIOA,
+		.init = {
+			.GPIO_Pin   = GPIO_Pin_2,
+			.GPIO_Speed = GPIO_Speed_2MHz,
+			.GPIO_Mode  = GPIO_Mode_Out_PP
+		},
+	},
+};
+#endif
 
 #endif  /* PIOS_INCLUDE_USART */
 

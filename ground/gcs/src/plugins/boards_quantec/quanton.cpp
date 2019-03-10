@@ -3,6 +3,7 @@
  *
  * @file       quanton.cpp
  * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013
+ * @author     dRonin, http://dronin.org Copyright (C) 2015
  *
  * @addtogroup GCSPlugins GCS Plugins
  * @{
@@ -86,6 +87,8 @@ bool Quanton::queryCapabilities(BoardCapabilities capability)
         return true;
     case BOARD_CAPABILITIES_RADIO:
         return false;
+    case BOARD_CAPABILITIES_OSD:
+        return false;
     }
     return false;
 }
@@ -135,4 +138,25 @@ int Quanton::queryMaxGyroRate()
     default:
         return 500;
     }
+}
+
+QStringList Quanton::getAdcNames()
+{
+    ExtensionSystem::PluginManager *pm = ExtensionSystem::PluginManager::instance();
+    UAVObjectManager *uavoManager = pm->getObject<UAVObjectManager>();
+    HwQuanton *hwQuanton = HwQuanton::GetInstance(uavoManager);
+    Q_ASSERT(hwQuanton);
+    if (!hwQuanton)
+        return QStringList();
+
+    HwQuanton::DataFields settings = hwQuanton->getData();
+    if (settings.RcvrPort == HwQuanton::RCVRPORT_OUTPUTSADC ||
+            settings.RcvrPort == HwQuanton::RCVRPORT_PPMADC ||
+            settings.RcvrPort == HwQuanton::RCVRPORT_PPMOUTPUTSADC ||
+            settings.RcvrPort == HwQuanton::RCVRPORT_PPMPWMADC ||
+            settings.RcvrPort == HwQuanton::RCVRPORT_PWMADC) {
+        return QStringList() << "IN 7" << "IN 8";
+    }
+
+    return QStringList() << "Disabled" << "Disabled";
 }

@@ -60,18 +60,8 @@ public:
         QString serialNumber;
         QString manufacturer;
         QString product;
-        int UsagePage;
-        int Usage;
         int vendorID;
         int productID;
-        // the convention for DFU mode is to change the
-        // Lower byte of bcdDevice depending on whether
-        // the board is in Bootloader mode or running mode.
-        // We provide the relevant values there:
-        int bootloaderMode;
-        int runningMode;
-        int bcdDevice; // Note: not that useful, the two values above
-                       // cater for almost the same into
     };
 
 
@@ -88,7 +78,7 @@ public:
     //! Types of capabilities boards can support
     enum BoardCapabilities {BOARD_CAPABILITIES_GYROS, BOARD_CAPABILITIES_ACCELS,
                             BOARD_CAPABILITIES_MAGS, BOARD_CAPABILITIES_BAROS,
-                            BOARD_CAPABILITIES_RADIO};
+                            BOARD_CAPABILITIES_RADIO, BOARD_CAPABILITIES_OSD};
     /**
      * @brief Query capabilities of the board.
      * @return true if board supports the capability that is requested (from BoardCapabilities)
@@ -220,7 +210,15 @@ public:
                            Core::IBoardType::LinkMode /*linkMode*/, quint8 /*min*/,
                            quint8 /*max*/) { return false; }
 
+    /**
+     * Check whether the board has USB
+     * @return true if usb, false if not
+     */
+    virtual bool isUSBSupported() { return true; }
+
     static QString getBoardNameFromID(int id);
+
+    virtual QStringList getAdcNames() { return QStringList(); }
 
 signals:
 

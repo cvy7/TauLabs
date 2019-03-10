@@ -1,6 +1,8 @@
 TEMPLATE = lib
 TARGET = Utils
-QMAKE_CXXFLAGS += -Wno-sign-compare
+
+!win32-msvc*:QMAKE_CXXFLAGS += -Wno-sign-compare
+win32: QMAKE_CXXFLAGS_RELEASE -= -Zc:strictStrings
 
 QT += gui \
     network \
@@ -17,7 +19,6 @@ include(../../taulabslibrary.pri)
 
 SOURCES += reloadpromptutils.cpp \
     settingsutils.cpp \
-    filesearch.cpp \
     pathchooser.cpp \
     pathlisteditor.cpp \
     filewizardpage.cpp \

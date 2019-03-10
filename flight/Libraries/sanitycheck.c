@@ -55,9 +55,6 @@ static int32_t check_stabilization_rates();
 //! Check the system is safe for autonomous flight
 static int32_t check_safe_autonomous();
 
-//!  Set the error code and alarm state
-static void set_config_error(SystemAlarmsConfigErrorOptions error_code);
-
 /**
  * Run a preflight check over the hardware configuration
  * and currently active modules
@@ -114,6 +111,7 @@ int32_t configuration_check()
 				}
 				break;
 			case MANUALCONTROLSETTINGS_FLIGHTMODEPOSITION_ACRO:
+			case MANUALCONTROLSETTINGS_FLIGHTMODEPOSITION_ACROPLUS:
 			case MANUALCONTROLSETTINGS_FLIGHTMODEPOSITION_LEVELING:
 			case MANUALCONTROLSETTINGS_FLIGHTMODEPOSITION_MWRATE:
 			case MANUALCONTROLSETTINGS_FLIGHTMODEPOSITION_HORIZON:
@@ -266,6 +264,7 @@ static int32_t check_safe_to_arm()
 		switch (flightStatus.FlightMode) {
 			case FLIGHTSTATUS_FLIGHTMODE_MANUAL:
 			case FLIGHTSTATUS_FLIGHTMODE_ACRO:
+			case FLIGHTSTATUS_FLIGHTMODE_ACROPLUS:
 			case FLIGHTSTATUS_FLIGHTMODE_LEVELING:
 			case FLIGHTSTATUS_FLIGHTMODE_MWRATE:
 			case FLIGHTSTATUS_FLIGHTMODE_HORIZON:
@@ -342,27 +341,37 @@ static int32_t check_stabilization_rates()
  * Set the error code and alarm state
  * @param[in] error code
  */
-static void set_config_error(SystemAlarmsConfigErrorOptions error_code)
+void set_config_error(SystemAlarmsConfigErrorOptions error_code)
 {
 	// Get the severity of the alarm given the error code
 	SystemAlarmsAlarmOptions severity;
+
+	static bool sticky = false;
+
+	/* Once a sticky error occurs, never change the error code */
+	if (sticky) return;
+
 	switch (error_code) {
 	case SYSTEMALARMS_CONFIGERROR_NONE:
 		severity = SYSTEMALARMS_ALARM_OK;
 		break;
-	case SYSTEMALARMS_CONFIGERROR_STABILIZATION:
-	case SYSTEMALARMS_CONFIGERROR_MULTIROTOR:
+	default:
+		error_code = SYSTEMALARMS_CONFIGERROR_UNDEFINED;
+		/* and fall through */
+
+	case SYSTEMALARMS_CONFIGERROR_DUPLICATEPORTCFG:
+		sticky = true;
+		/* and fall through */
 	case SYSTEMALARMS_CONFIGERROR_AUTOTUNE:
 	case SYSTEMALARMS_CONFIGERROR_ALTITUDEHOLD:
-	case SYSTEMALARMS_CONFIGERROR_POSITIONHOLD:
-	case SYSTEMALARMS_CONFIGERROR_PATHPLANNER:
+	case SYSTEMALARMS_CONFIGERROR_MULTIROTOR:
 	case SYSTEMALARMS_CONFIGERROR_NAVFILTER:
+	case SYSTEMALARMS_CONFIGERROR_PATHPLANNER:
+	case SYSTEMALARMS_CONFIGERROR_POSITIONHOLD:
+	case SYSTEMALARMS_CONFIGERROR_STABILIZATION:
+	case SYSTEMALARMS_CONFIGERROR_UNDEFINED:
 	case SYSTEMALARMS_CONFIGERROR_UNSAFETOARM:
 		severity = SYSTEMALARMS_ALARM_ERROR;
-		break;
-	default:
-		severity = SYSTEMALARMS_ALARM_ERROR;
-		error_code = SYSTEMALARMS_CONFIGERROR_UNDEFINED;
 		break;
 	}
 

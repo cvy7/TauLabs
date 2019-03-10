@@ -31,6 +31,7 @@ include $(BOARD_INFO_DIR)/board-info.mk
 # Set to YES for debugging
 DEBUG ?= NO
 ERASE_FLASH ?= NO
+RTOS ?= FREERTOS
 
 # List of modules to include
 MODULES = Sensors
@@ -56,14 +57,16 @@ OPTMODULES += Battery
 OPTMODULES += VibrationAnalysis
 OPTMODULES += UAVOMavlinkBridge
 OPTMODULES += UAVOLighttelemetryBridge
-OPTMODULES += Airspeed/revolution
+OPTMODULES += Airspeed
 OPTMODULES += UAVOHoTTBridge
 OPTMODULES += UAVOFrSKYSensorHubBridge
 OPTMODULES += PicoC
 OPTMODULES += UAVOFrSKYSPortBridge
 OPTMODULES += Geofence
+OPTMODULES += ComUsbBridge
 
 # Paths
+TARGET_ARCHITECTURE = STM32F4xx
 OPUAVTALKINC = $(OPUAVTALK)/inc
 OPUAVOBJINC = $(OPUAVOBJ)/inc
 PIOSINC = $(PIOS)/inc
@@ -72,10 +75,10 @@ MATHLIB = $(FLIGHTLIB)/math
 MATHLIBINC = $(FLIGHTLIB)/math
 RSCODE = $(FLIGHTLIB)/rscode
 RSCODEINC = $(FLIGHTLIB)/rscode
-PIOSSTM32F4XX = $(PIOS)/STM32F4xx
+PIOSSTM32FXXX = $(PIOS)/$(TARGET_ARCHITECTURE)
 PIOSCOMMON = $(PIOS)/Common
 PIOSCOMMONLIB = $(PIOSCOMMON)/Libraries
-APPLIBDIR = $(PIOSSTM32F4XX)/Libraries
+APPLIBDIR = $(PIOSSTM32FXXX)/Libraries
 STMLIBDIR = $(APPLIBDIR)
 STMSPDDIR = $(STMLIBDIR)/STM32F4xx_StdPeriph_Driver
 STMSPDSRCDIR = $(STMSPDDIR)/src
@@ -87,9 +90,8 @@ MAVLINKINC = $(FLIGHTLIB)/mavlink/v1.0/common
 
 SRC = 
 # optional component libraries
-include $(PIOSCOMMONLIB)/FreeRTOS/library.mk
-#include $(PIOSCOMMONLIB)/dosfs/library.mk
 include $(FLIGHTLIB)/CMSIS3/DSP_Lib/library.mk
+include $(FLIGHTLIB)/lqg_rate/library.mk
 
 
 # List C source files here. (C dependencies are automatically generated.)
@@ -118,6 +120,7 @@ SRC += $(FLIGHTLIB)/WorldMagModel.c
 SRC += $(FLIGHTLIB)/insgps14state.c
 SRC += $(FLIGHTLIB)/taskmonitor.c
 SRC += $(FLIGHTLIB)/sanitycheck.c
+SRC += $(FLIGHTLIB)/frsky_packing.c
 SRC += $(MATHLIB)/coordinate_conversions.c
 SRC += $(MATHLIB)/misc_math.c
 SRC += $(MATHLIB)/atmospheric_math.c
@@ -129,9 +132,6 @@ SRC += $(RSCODE)/crcgen.c
 SRC += $(RSCODE)/galois.c
 SRC += $(RSCODE)/rs.c
 
-## PIOS Hardware (STM32F4xx)
-include $(PIOS)/STM32F4xx/library_fw.mk
-
 ## PIOS Hardware (Common)
 SRC += $(PIOSCOMMON)/pios_delay.c
 SRC += $(PIOSCOMMON)/pios_mpu6000.c
@@ -142,9 +142,10 @@ SRC += $(PIOSCOMMON)/pios_mpxv7002.c
 SRC += $(PIOSCOMMON)/pios_gcsrcvr.c
 SRC += $(PIOSCOMMON)/pios_l3gd20.c
 SRC += $(PIOSCOMMON)/pios_hmc5883.c
-SRC += $(PIOSCOMMON)/pios_ms5611.c
+SRC += $(PIOSCOMMON)/pios_ms5xxx.c
 SRC += $(PIOSCOMMON)/pios_crc.c
 SRC += $(PIOSCOMMON)/pios_com.c
+SRC += $(PIOSCOMMON)/pios_dsm.c
 SRC += $(PIOSCOMMON)/pios_openlrs.c
 SRC += $(PIOSCOMMON)/pios_openlrs_rcvr.c
 SRC += $(PIOSCOMMON)/pios_rfm22b.c
@@ -167,10 +168,8 @@ SRC += $(PIOSCOMMON)/pios_semaphore.c
 SRC += $(PIOSCOMMON)/pios_mutex.c
 SRC += $(PIOSCOMMON)/pios_thread.c
 SRC += $(PIOSCOMMON)/pios_queue.c
+SRC += $(PIOSCOMMON)/pios_hal.c
 
-
-include ./UAVObjects.inc
-SRC += $(UAVOBJSRC)
 
 # List C source files here which must be compiled in ARM-Mode (no -mthumb).
 # use file-extension c for "c-only"-files
@@ -211,7 +210,7 @@ EXTRAINCDIRS  += $(UAVOBJSYNTHDIR)
 EXTRAINCDIRS  += $(FLIGHTLIBINC)
 EXTRAINCDIRS  += $(MATHLIBINC)
 EXTRAINCDIRS  += $(RSCODEINC)
-EXTRAINCDIRS  += $(PIOSSTM32F4XX)
+EXTRAINCDIRS  += $(PIOSSTM32FXXX)
 EXTRAINCDIRS  += $(PIOSCOMMON)
 EXTRAINCDIRS  += $(BOARD_INFO_DIR)
 EXTRAINCDIRS  += $(STMSPDINCDIR)
@@ -238,7 +237,7 @@ EXTRA_LIBDIRS =
 EXTRA_LIBS =
 
 # Path to Linker-Scripts
-LINKERSCRIPTPATH = $(PIOSSTM32F4XX)
+LINKERSCRIPTPATH = $(PIOSSTM32FXXX)
 
 # Optimization level, can be [0, 1, 2, 3, s].
 # 0 = turn off optimization. s = optimize for size.
@@ -271,7 +270,7 @@ CDEFS += -DUNALIGNED_SUPPORT_DISABLE
 
 # This is not the best place for these.  Really should abstract out
 # to the board file or something
-CFLAGS += -DSTM32F4XX
+CFLAGS += -D$(STM32_TYPE)
 CFLAGS += -DMEM_SIZE=1024000000
 
 # Output format. (can be ihex or binary or both)
@@ -360,6 +359,8 @@ ASFLAGS += -Wa,-adhlns=$(addprefix $(OUTDIR)/, $(notdir $(addsuffix .lst, $(base
 ASFLAGS += $(patsubst %,-I%,$(EXTRAINCDIRS))
 
 MATH_LIB = -lm
+
+LIBS += $(UAVOBJLIB)
 
 # Linker flags.
 #  -Wl,...:     tell GCC to pass this to linker.

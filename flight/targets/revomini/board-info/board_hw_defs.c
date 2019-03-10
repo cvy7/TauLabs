@@ -528,8 +528,8 @@ static const struct pios_flash_internal_cfg flash_internal_cfg = {
 
 #include "pios_flash_priv.h"
 
-static const struct pios_flash_sector_range stm32f4_sectors[] = {
 #if defined(PIOS_INCLUDE_FLASH_INTERNAL)
+static const struct pios_flash_sector_range stm32f4_sectors[] = {
 	{
 		.base_sector = 0,
 		.last_sector = 3,
@@ -594,12 +594,12 @@ static const struct pios_flash_partition pios_flash_partition_table[] = {
 		.label        = FLASH_PARTITION_LABEL_FW,
 		.chip_desc    = &pios_flash_chip_internal,
 		.first_sector = 5,
-		.last_sector  = 6,
+		.last_sector  = 7,
 		.chip_offset  = (4 * FLASH_SECTOR_16KB) + (1 * FLASH_SECTOR_64KB),
-		.size         = (6 - 5 + 1) * FLASH_SECTOR_128KB,
+		.size         = (7 - 5 + 1) * FLASH_SECTOR_128KB,
 	},
 
-	/* NOTE: sectors 7-11 of the internal flash are currently unallocated */
+	/* NOTE: sectors 8-11 of the internal flash are currently unallocated */
 
 #endif /* PIOS_INCLUDE_FLASH_INTERNAL */
 
@@ -1676,7 +1676,13 @@ struct pios_internal_adc_cfg pios_adc_cfg = {
 	},
 	.half_flag = DMA_IT_HTIF4,
 	.full_flag = DMA_IT_TCIF4,
-
+	.adc_pins = {                                                                                           \
+		{GPIOC, GPIO_Pin_1,     ADC_Channel_11},                                                \
+		{GPIOC, GPIO_Pin_2,     ADC_Channel_12},                                                \
+		{NULL,  0,              ADC_Channel_Vrefint},           /* Voltage reference */         \
+		{NULL,  0,              ADC_Channel_TempSensor},        /* Temperature sensor */        \
+	},
+	.adc_pin_count = 4,
 };
 
 struct stm32_gpio pios_current_sonar_pin ={

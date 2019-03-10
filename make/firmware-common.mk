@@ -1,5 +1,37 @@
+# Check for RTOS
+ifeq ($(RTOS), CHIBIOS)
+  CDEFS += -DPIOS_INCLUDE_CHIBIOS
+  include $(APPLIBDIR)/ChibiOS/library.mk
+  SRC += board.c
+else ifeq ($(RTOS), FREERTOS)
+  CDEFS += -DPIOS_INCLUDE_FREERTOS
+  include $(PIOSCOMMONLIB)/FreeRTOS/library.mk
+else ifeq ($(RTOS), UNDEFINED_FOR_UAVOBJECT_LIB)
+  # Do nothing here, it's only included as an escape for the
+else
+  $(error [RTOS]: $(RTOS) is not a valid RTOS. Choose between either CHIBIOS or FREERTOS)
+endif
+
+## PIOS Hardware (STM32F1/3/4xx or POSIX)
+# `ifneq ($(or $(VAR1),$(VAR2)),)` is the Makefile code for `if defined(VAR1) || defined(VAR2)`
+ifneq ($(or $(PIOSSTM32FXXX),$(PIOSPOSIX)),)
+  ifeq ($(RTOS), CHIBIOS)
+    include $(PIOS)/$(TARGET_ARCHITECTURE)/library_chibios.mk
+  else ifeq ($(RTOS), FREERTOS)
+    include $(PIOS)/$(TARGET_ARCHITECTURE)/library_fw.mk
+  endif
+endif
+
+
+FLOATABI ?= soft
+UAVOBJLIB := $(OUTDIR)/../uavobjects_arm$(FLOATABI)fp/libuavobject.a
+
 # Define programs and commands.
 REMOVE  = rm -f
+
+ifeq ($(BUILD_UAVO), YES)
+SRC += $(wildcard $(OPUAVSYNTHDIR)/*.c )
+endif
 
 # List of all source files.
 ALLSRC     =  $(ASRC) $(SRC) $(CPPSRC)
@@ -15,10 +47,14 @@ DEPFILES   = $(addprefix $(OUTDIR)/dep/, $(addsuffix .o.d, $(ALLSRCBASE)))
 # Default target.
 all: gccversion build
 
-build: elf hex bin lss sym
+build: elf
+
+ifneq ($(BUILD_FWFILES), NO)
+build: hex bin lss sym
+endif
 
 # Link: create ELF output file from object files.
-$(eval $(call LINK_TEMPLATE, $(OUTDIR)/$(TARGET).elf, $(ALLOBJ)))
+$(eval $(call LINK_TEMPLATE, $(OUTDIR)/$(TARGET).elf, $(ALLOBJ) $(LIBS)))
 
 # Assemble: create object files from assembler source files.
 $(foreach src, $(ASRC), $(eval $(call ASSEMBLE_TEMPLATE, $(src))))
@@ -34,7 +70,15 @@ $(eval $(call PARTIAL_COMPILE_TEMPLATE, SRC))
 
 $(OUTDIR)/$(TARGET).bin.o: $(OUTDIR)/$(TARGET).bin
 
-$(eval $(call TLFW_TEMPLATE,$(OUTDIR)/$(TARGET).bin,$(BOARD_TYPE),$(BOARD_REVISION)))
+# Allows the bin to be padded up to the firmware description blob base
+# Required for boards which don't use the TL bootloader to put
+# the blob at the correct location
+ifdef PAD_TLFW_FW_DESC
+FW_DESC_BASE := $(shell echo $$(($(FW_BANK_BASE)+$(FW_BANK_SIZE)-$(FW_DESC_SIZE))))
+else 
+FW_DESC_BASE = 0
+endif
+$(eval $(call TLFW_TEMPLATE,$(OUTDIR)/$(TARGET).bin,$(BOARD_TYPE),$(BOARD_REVISION),$(FW_DESC_BASE)))
 
 # Add jtag targets (program and wipe)
 $(eval $(call JTAG_TEMPLATE,$(OUTDIR)/$(TARGET).bin,$(FW_BANK_BASE),$(FW_BANK_SIZE),$(OPENOCD_JTAG_CONFIG),$(OPENOCD_CONFIG)))
@@ -74,6 +118,7 @@ clean_list :
 	$(V1) $(REMOVE) $(OUTDIR)/$(TARGET).elf
 	$(V1) $(REMOVE) $(OUTDIR)/$(TARGET).hex
 	$(V1) $(REMOVE) $(OUTDIR)/$(TARGET).bin
+	$(V1) $(REMOVE) $(OUTDIR)/$(TARGET).padded.bin
 	$(V1) $(REMOVE) $(OUTDIR)/$(TARGET).sym
 	$(V1) $(REMOVE) $(OUTDIR)/$(TARGET).lss
 	$(V1) $(REMOVE) $(OUTDIR)/$(TARGET).bin.o

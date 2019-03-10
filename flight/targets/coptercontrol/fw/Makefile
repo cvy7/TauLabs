@@ -32,6 +32,8 @@ include $(BOARD_INFO_DIR)/board-info.mk
 # @optbrief Set to YES to compile for debugging
 DEBUG ?= NO
 
+RTOS ?= FREERTOS
+
 # @optbrief Include objects that are just nice information to show
 STACK_DIAGNOSTICS ?= NO
 MIXERSTATUS_DIAGNOSTICS ?= NO
@@ -62,8 +64,8 @@ USE_TXPID ?= YES
 USE_I2C ?= NO
 USE_ALTITUDE ?= NO
 USE_AUTOTUNE ?= YES
-TEST_FAULTS ?= NO
 USE_UAVOMAVLINKBRIDGE ?= YES
+USE_UAVOMSPBRIDGE ?= YES
 USE_UAVOLIGHTTELEMETRYBRIDGE ?= NO
 USE_UAVOFRSKYSENSORHUBBRIDGE ?= YES
 USE_PCF8591 ?= NO
@@ -96,14 +98,14 @@ else
 $(error "Altitude module (USE_ALTITUDE=YES) requires i2c (USE_I2C=YES)")
 endif
 endif
-ifeq ($(TEST_FAULTS), YES)
-OPTMODULES += Fault
-endif
 ifeq ($(USE_AUTOTUNE), YES)
 OPTMODULES += Autotune
 endif
 ifeq ($(USE_UAVOMAVLINKBRIDGE), YES)
 OPTMODULES += UAVOMavlinkBridge
+endif
+ifeq ($(USE_UAVOMSPBRIDGE), YES)
+OPTMODULES += UAVOMSPBridge
 endif
 ifeq ($(USE_UAVOFRSKYSENSORHUBBRIDGE), YES)
 OPTMODULES += UAVOFrSKYSensorHubBridge
@@ -114,7 +116,6 @@ endif
 # List of mandatory modules to include
 MODULES += Attitude/smallf1
 MODULES += Stabilization Actuator ManualControl FirmwareIAP
-# MODULES += PathFollower/coptercontrol
 # Telemetry must be last to grab the optional modules (why?)
 MODULES += Telemetry
 
@@ -140,11 +141,7 @@ STMSPDINCDIR = $(STMSPDDIR)/inc
 STMUSBSRCDIR = $(STMUSBDIR)/src
 STMUSBINCDIR = $(STMUSBDIR)/inc
 CMSISDIR  = $(STMLIBDIR)/CMSIS/Core/CM3
-DOSFSDIR  = $(APPLIBDIR)/dosfs
 MSDDIR  = $(APPLIBDIR)/msd
-RTOSDIR = $(PIOSCOMMON)/Libraries/FreeRTOS
-RTOSSRCDIR = $(RTOSDIR)/Source
-RTOSINCDIR = $(RTOSSRCDIR)/include
 RTOSPORTDIR = $(APPLIBDIR)/FreeRTOS/Source
 DOXYGENDIR = ../Doc/Doxygen
 MAVLINKINC  = $(FLIGHTLIB)/mavlink/v1.0/common
@@ -164,71 +161,12 @@ SRC += $(FLIGHTLIB)/alarms.c
 SRC += $(OPUAVTALK)/uavtalk.c
 SRC += $(OPUAVOBJ)/uavobjectmanager.c
 SRC += $(OPUAVOBJ)/eventdispatcher.c
+SRC += $(FLIGHTLIB)/msplib.c
+
 else
 ## TESTCODE
 SRC += $(OPTESTS)/test_common.c
 SRC += $(OPTESTS)/$(TESTAPP).c
-endif
-
-## UAVOBJECTS
-ifndef TESTAPP
-SRC += $(OPUAVSYNTHDIR)/accessorydesired.c
-SRC += $(OPUAVSYNTHDIR)/objectpersistence.c
-SRC += $(OPUAVSYNTHDIR)/gcstelemetrystats.c
-SRC += $(OPUAVSYNTHDIR)/flighttelemetrystats.c
-SRC += $(OPUAVSYNTHDIR)/faultsettings.c
-SRC += $(OPUAVSYNTHDIR)/flightstatus.c
-SRC += $(OPUAVSYNTHDIR)/systemstats.c
-SRC += $(OPUAVSYNTHDIR)/systemalarms.c
-SRC += $(OPUAVSYNTHDIR)/systemsettings.c
-SRC += $(OPUAVSYNTHDIR)/stabilizationdesired.c
-SRC += $(OPUAVSYNTHDIR)/stabilizationsettings.c
-SRC += $(OPUAVSYNTHDIR)/actuatorcommand.c
-SRC += $(OPUAVSYNTHDIR)/actuatordesired.c
-SRC += $(OPUAVSYNTHDIR)/actuatorsettings.c
-SRC += $(OPUAVSYNTHDIR)/accels.c
-SRC += $(OPUAVSYNTHDIR)/gyros.c
-SRC += $(OPUAVSYNTHDIR)/attitudeactual.c
-SRC += $(OPUAVSYNTHDIR)/manualcontrolcommand.c
-SRC += $(OPUAVSYNTHDIR)/watchdogstatus.c
-SRC += $(OPUAVSYNTHDIR)/manualcontrolsettings.c
-SRC += $(OPUAVSYNTHDIR)/mixersettings.c
-SRC += $(OPUAVSYNTHDIR)/firmwareiapobj.c
-SRC += $(OPUAVSYNTHDIR)/attitudesettings.c
-SRC += $(OPUAVSYNTHDIR)/camerastabsettings.c
-SRC += $(OPUAVSYNTHDIR)/cameradesired.c
-SRC += $(OPUAVSYNTHDIR)/gpsposition.c
-SRC += $(OPUAVSYNTHDIR)/gpsvelocity.c
-SRC += $(OPUAVSYNTHDIR)/hwcoptercontrol.c
-SRC += $(OPUAVSYNTHDIR)/modulesettings.c
-SRC += $(OPUAVSYNTHDIR)/gcsreceiver.c
-SRC += $(OPUAVSYNTHDIR)/receiveractivity.c
-SRC += $(OPUAVSYNTHDIR)/systemident.c
-SRC += $(OPUAVSYNTHDIR)/taskinfo.c
-SRC += $(OPUAVSYNTHDIR)/mixerstatus.c
-SRC += $(OPUAVSYNTHDIR)/mwratesettings.c
-SRC += $(OPUAVSYNTHDIR)/ratedesired.c
-SRC += $(OPUAVSYNTHDIR)/baroaltitude.c
-SRC += $(OPUAVSYNTHDIR)/txpidsettings.c
-SRC += $(OPUAVSYNTHDIR)/fixedwingairspeeds.c
-SRC += $(OPUAVSYNTHDIR)/fixedwingpathfollowerstatus.c
-SRC += $(OPUAVSYNTHDIR)/fixedwingpathfollowersettingscc.c
-SRC += $(OPUAVSYNTHDIR)/pathstatus.c
-SRC += $(OPUAVSYNTHDIR)/pathdesired.c
-SRC += $(OPUAVSYNTHDIR)/homelocation.c
-SRC += $(OPUAVSYNTHDIR)/poilocation.c
-SRC += $(OPUAVSYNTHDIR)/positionactual.c
-SRC += $(OPUAVSYNTHDIR)/tabletinfo.c
-SRC += $(OPUAVSYNTHDIR)/velocityactual.c
-SRC += $(OPUAVSYNTHDIR)/airspeedactual.c
-SRC += $(OPUAVSYNTHDIR)/sensorsettings.c
-SRC += $(OPUAVSYNTHDIR)/flightbatterystate.c
-SRC += $(OPUAVSYNTHDIR)/flightbatterysettings.c
-SRC += $(OPUAVSYNTHDIR)/trimanglessettings.c
-SRC += $(OPUAVSYNTHDIR)/trimangles.c
-SRC += $(OPUAVSYNTHDIR)/ubloxinfo.c
-SRC += $(OPUAVSYNTHDIR)/sessionmanaging.c
-
 endif
 
 ## PIOS Hardware (STM32F10x)
@@ -242,10 +180,10 @@ SRC += $(PIOSSTM32F10X)/pios_i2c.c
 SRC += $(PIOSSTM32F10X)/pios_spi.c
 SRC += $(PIOSSTM32F10X)/pios_ppm.c
 SRC += $(PIOSSTM32F10X)/pios_pwm.c
-SRC += $(PIOSSTM32F10X)/pios_dsm.c
 SRC += $(PIOSSTM32F10X)/pios_debug.c
 SRC += $(PIOSSTM32F10X)/pios_gpio.c
 SRC += $(PIOSSTM32F10X)/pios_exti.c
+SRC += $(PIOSSTM32F10X)/pios_reset.c
 SRC += $(PIOSSTM32F10X)/pios_rtc.c
 SRC += $(PIOSSTM32F10X)/pios_wdg.c
 SRC += $(PIOSSTM32F10X)/pios_iap.c
@@ -256,7 +194,6 @@ SRC += $(PIOSSTM32F10X)/pios_bl_helper.c
 SRC += $(PIOSSTM32F10X)/pios_usb.c
 SRC += $(PIOSSTM32F10X)/pios_usbhook.c
 SRC += $(PIOSSTM32F10X)/pios_usb_hid.c
-SRC += $(PIOSSTM32F10X)/pios_usb_rctx.c
 SRC += $(PIOSSTM32F10X)/pios_usb_cdc.c
 SRC += $(PIOSSTM32F10X)/pios_usb_hid_istr.c
 SRC += $(PIOSSTM32F10X)/pios_usb_hid_pwr.c
@@ -272,6 +209,7 @@ SRC += $(PIOSCOMMON)/pios_crc.c
 SRC += $(PIOSCOMMON)/pios_flashfs_logfs.c
 SRC += $(PIOSCOMMON)/pios_flash_jedec.c
 SRC += $(PIOSCOMMON)/pios_adxl345.c
+SRC += $(PIOSCOMMON)/pios_dsm.c
 SRC += $(PIOSCOMMON)/pios_mpu6000.c
 SRC += $(PIOSCOMMON)/pios_com.c
 SRC += $(PIOSCOMMON)/pios_rcvr.c
@@ -285,6 +223,7 @@ SRC += $(PIOSCOMMON)/pios_flash.c
 ifeq ($(USE_PCF8591), YES)
 SRC += $(PIOSCOMMON)/pios_pcf8591_adc.c
 endif
+SRC += $(PIOSCOMMON)/pios_hal.c
 SRC += $(PIOSCOMMON)/pios_heap.c
 SRC += $(PIOSCOMMON)/pios_semaphore.c
 SRC += $(PIOSCOMMON)/pios_mutex.c
@@ -308,6 +247,8 @@ SRC += $(MATHLIB)/pid.c
 ## CMSIS for STM32
 include $(PIOSCOMMONLIB)/CMSIS3/library.mk
 SRC += $(BOARD_INFO_DIR)/cmsis_system.c
+
+include $(FLIGHTLIB)/lqg_rate/library.mk
 
 ## Used parts of the STM-Library
 SRC += $(STMSPDSRCDIR)/stm32f10x_adc.c
@@ -337,25 +278,9 @@ SRC += $(STMUSBSRCDIR)/usb_mem.c
 SRC += $(STMUSBSRCDIR)/usb_regs.c
 SRC += $(STMUSBSRCDIR)/usb_sil.c
 
-## RTOS
-SRC += $(RTOSSRCDIR)/list.c
-SRC += $(RTOSSRCDIR)/queue.c
-SRC += $(RTOSSRCDIR)/tasks.c
-
 ## RTOS Portable
 SRC += $(RTOSPORTDIR)/portable/GCC/ARM_CM3/port.c
-
-## Dosfs file system
-#SRC += $(DOSFSDIR)/dosfs.c
-#SRC += $(DOSFSDIR)/dfs_sdcard.c
-
-## Mass Storage Device
-#SRC += $(MSDDIR)/msd.c
-#SRC += $(MSDDIR)/msd_bot.c
-#SRC += $(MSDDIR)/msd_desc.c
-#SRC += $(MSDDIR)/msd_memory.c
-#SRC += $(MSDDIR)/msd_scsi.c
-#SRC += $(MSDDIR)/msd_scsi_data.c
+EXTRAINCDIRS += $(RTOSPORTDIR)/portable/GCC/ARM_CM3
 
 # List C source files here which must be compiled in ARM-Mode (no -mthumb).
 # use file-extension c for "c-only"-files
@@ -403,11 +328,8 @@ EXTRAINCDIRS  += $(BOARD_INFO_DIR)
 EXTRAINCDIRS  += $(STMSPDINCDIR)
 EXTRAINCDIRS  += $(STMUSBINCDIR)
 EXTRAINCDIRS  += $(CMSISDIR)
-EXTRAINCDIRS  += $(DOSFSDIR)
 EXTRAINCDIRS  += $(MSDDIR)
-EXTRAINCDIRS  += $(RTOSINCDIR)
 EXTRAINCDIRS  += $(APPLIBDIR)
-EXTRAINCDIRS  += $(RTOSPORTDIR)/portable/GCC/ARM_CM3
 EXTRAINCDIRS  += $(AHRSBOOTLOADERINC)
 EXTRAINCDIRS  += $(MAVLINKINC)
 
@@ -572,6 +494,8 @@ ASFLAGS += -Wa,-adhlns=$(addprefix $(OUTDIR)/, $(notdir $(addsuffix .lst, $(base
 ASFLAGS += $(patsubst %,-I%,$(EXTRAINCDIRS))
 
 MATH_LIB = -lm
+
+LIBS += $(UAVOBJLIB)
 
 # Linker flags.
 #  -Wl,...:     tell GCC to pass this to linker.

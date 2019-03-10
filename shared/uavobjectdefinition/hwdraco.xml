@@ -3,9 +3,13 @@
 		<description>Selection of optional hardware configurations.</description>
 
 		<field name="OutputPort" units="function" type="enum" elements="1" options="12Outputs,6Outputs+6Inputs" defaultvalue="12Outputs"/>
-		<field name="RcvrPin" units="function" type="enum" elements="1" options="Disabled,CPPM,SBUS" defaultvalue="CPPM"/>
+		<field name="RcvrPort" units="function" type="enum" elements="1" parent="HwShared.PortTypes" defaultvalue="S.Bus">
+			<option>Disabled</option>
+			<option>PPM</option>
+			<option>S.Bus</option>
+		</field>
 
-		<field name="UartXbee" units="function" type="enum" elements="1"  defaultvalue="Telemetry">
+		<field name="UartXbee" units="function" type="enum" elements="1" parent="HwShared.PortTypes" defaultvalue="Telemetry">
 			<options>
 				<option>Disabled</option>
 				<option>Telemetry</option>
@@ -22,10 +26,11 @@
 				<option>FrSKY Sensor Hub</option>
 				<option>LighttelemetryTx</option>
 				<option>PicoC</option>
+				<option>OpenLog</option>
 			</options>
 		</field>
 
-		<field name="UartGPS" units="function" type="enum" elements="1"  defaultvalue="GPS">
+		<field name="UartGPS" units="function" type="enum" elements="1" parent="HwShared.PortTypes" defaultvalue="GPS">
 			<options>
 				<option>Disabled</option>
 				<option>Telemetry</option>
@@ -41,10 +46,11 @@
 				<option>FrSKY Sensor Hub</option>
 				<option>LighttelemetryTx</option>
 				<option>PicoC</option>
+				<option>OpenLog</option>
 			</options>
 		</field>
 
-		<field name="UartExtension" units="function" type="enum" elements="1"  defaultvalue="Disabled">
+		<field name="UartExtension" units="function" type="enum" elements="1" parent="HwShared.PortTypes" defaultvalue="Disabled">
 			<options>
 				<option>Disabled</option>
 				<option>Telemetry</option>
@@ -61,10 +67,11 @@
 				<option>FrSKY Sensor Hub</option>
 				<option>LighttelemetryTx</option>
 				<option>PicoC</option>
+				<option>OpenLog</option>
 			</options>
 		</field>
 
-		<field name="UartOnewire" units="function" type="enum" elements="1"  defaultvalue="FrSKY SPort Telemetry">
+		<field name="UartOnewire" units="function" type="enum" elements="1" parent="HwShared.PortTypes" defaultvalue="FrSKY SPort Telemetry">
 			<options>
 				<option>Disabled</option>
 				<option>FrSKY SPort Telemetry</option>
@@ -72,10 +79,10 @@
 		</field>
 
 
-		<field name="USB_HIDPort" units="function" type="enum" elements="1" options="USBTelemetry,RCTransmitter,Disabled" defaultvalue="USBTelemetry"/>
-		<field name="USB_VCPPort" units="function" type="enum" elements="1" options="USBTelemetry,ComBridge,DebugConsole,PicoC,Disabled" defaultvalue="Disabled"/>
+		<field name="USB_HIDPort" units="function" type="enum" elements="1" parent="HwShared.USB_HIDPort" defaultvalue="USBTelemetry"/>
+		<field name="USB_VCPPort" units="function" type="enum" elements="1" parent="HwShared.USB_VCPPort" defaultvalue="Disabled"/>
 
-		<field name="DSMxBind" units=""  type="uint8"  elements="1" defaultvalue="0"/>
+		<field name="DSMxMode" units="mode"  type="enum"  elements="1" parent="HwShared.DSMxMode" defaultvalue="Autodetect"/>
 
 		<field name="GyroRange" units="deg/s" type="enum" elements="1" options="250,500,1000,2000" defaultvalue="500"/>
 		<field name="AccelRange" units="*gravity m/s^2" type="enum" elements="1" options="2G,4G,8G,16G" defaultvalue="8G"/>
@@ -84,7 +91,7 @@
 		<field name="MPU9250DLPFAccel" units="" type="enum" elements="1" options="460,184,92,41,20,10,5" defaultvalue="184"/>
 				
 		<field name="Magnetometer" units="function" type="enum" elements="1" options="Disabled,Internal,ExternalI2C_HMC5883,ExternalI2C_HMC5983" defaultvalue="Internal"/>
-		<field name="ExtMagOrientation" units="function" type="enum" elements="1" options="Top0degCW,Top90degCW,Top180degCW,Top270degCW,Bottom0degCW,Bottom90degCW,Bottom180degCW,Bottom270degCW" defaultvalue="Top0degCW" />
+		<field name="ExtMagOrientation" units="function" type="enum" elements="1" parent="HwShared.MagOrientation" defaultvalue="Top0degCW" />
 		<field name="OSDEnable" units="function" type="enum" elements="1" options="Enabled,Disabled" defaultvalue="Enabled"/>
 		<field name="OSDUnits" units="function" type="enum" elements="1" options="Metric,Imperial" defaultvalue="Metric"/>
 		<field name="OSDTvSystem" units="function" type="enum" elements="1" options="Auto,PAL,NTSC" defaultvalue="Auto"/>

@@ -101,6 +101,8 @@ bool Sparky2::queryCapabilities(BoardCapabilities capability)
         return true;
     case BOARD_CAPABILITIES_RADIO:
         return true;
+    case BOARD_CAPABILITIES_OSD:
+        return false;
     }
     return false;
 }
@@ -343,4 +345,9 @@ bool Sparky2::bindRadio(quint32 id, quint32 baud_rate, float rf_power,
     uavoUtilManager->saveObjectToFlash(getSettings());
 
     return true;
+}
+
+QStringList Sparky2::getAdcNames()
+{
+    return QStringList() << "Analog CUR" << "Analog VOLT";
 }

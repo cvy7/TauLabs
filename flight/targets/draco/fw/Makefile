@@ -30,6 +30,8 @@ include $(BOARD_INFO_DIR)/board-info.mk
 # Set developer code and compile options
 # Set to YES for debugging
 DEBUG ?= NO
+ERASE_FLASH ?= NO
+RTOS ?= CHIBIOS
 
 # List of modules to include
 MODULES = Sensors
@@ -39,9 +41,11 @@ MODULES += ManualControl
 MODULES += Stabilization
 MODULES += FirmwareIAP
 MODULES += Telemetry
+PYMODULES = 
+#FlightPlan
 
 OPTMODULES += GPS
-OPTMODULES += AltitudeHold 
+OPTMODULES += AltitudeHold
 OPTMODULES += VtolPathFollower 
 OPTMODULES += FixedWingPathFollower
 OPTMODULES += GroundPathFollower
@@ -53,7 +57,7 @@ OPTMODULES += VibrationAnalysis
 OPTMODULES += UAVOMavlinkBridge
 OPTMODULES += Battery
 OPTMODULES += ComUsbBridge
-OPTMODULES += Airspeed/revolution
+OPTMODULES += Airspeed
 OPTMODULES += UAVOHoTTBridge
 OPTMODULES += UAVOFrSKYSensorHubBridge
 OPTMODULES += UAVOLighttelemetryBridge
@@ -61,8 +65,10 @@ OPTMODULES += PicoC
 OPTMODULES += UAVOFrSKYSPortBridge
 OPTMODULES += Geofence
 OPTMODULES += Logging
+OPTMODULES += FlightStats
 
 # Paths
+TARGET_ARCHITECTURE = STM32F4xx
 OPUAVTALKINC = $(OPUAVTALK)/inc
 OPUAVOBJINC = $(OPUAVOBJ)/inc
 PIOSINC = $(PIOS)/inc
@@ -71,7 +77,7 @@ MATHLIB = $(FLIGHTLIB)/math
 MATHLIBINC = $(FLIGHTLIB)/math
 RSCODE = $(FLIGHTLIB)/rscode
 RSCODEINC = $(FLIGHTLIB)/rscode
-PIOSSTM32F4XX = $(PIOS)/STM32F4xx
+PIOSSTM32F4XX = $(PIOS)/$(TARGET_ARCHITECTURE)
 PIOSCOMMON = $(PIOS)/Common
 PIOSCOMMONLIB = $(PIOSCOMMON)/Libraries
 APPLIBDIR = $(PIOSSTM32F4XX)/Libraries
@@ -82,14 +88,12 @@ STMSPDINCDIR = $(STMSPDDIR)/inc
 DEBUG_CM3_DIR = $(PIOSCOMMONLIB)/Debug
 DEBUG_CM3_DIR_INC = $(DEBUG_CM3_DIR)/inc
 OPUAVOBJINC = $(OPUAVOBJ)/inc
-FLIGHTPLANLIB = $(OPMODULEDIR)/FlightPlan/lib
-FLIGHTPLANS = $(OPMODULEDIR)/FlightPlan/flightplans
 MAVLINKINC = $(FLIGHTLIB)/mavlink/v1.0/common
 
 # optional component libraries
-include $(APPLIBDIR)/ChibiOS/library.mk
-#include $(PIOSCOMMONLIB)/dosfs/library.mk
+#include $(APPLIBDIR)/ChibiOS/library.mk
 include $(FLIGHTLIB)/CMSIS3/DSP_Lib/library.mk
+include $(FLIGHTLIB)/lqg_rate/library.mk
 
 
 # List C source files here. (C dependencies are automatically generated.)
@@ -100,7 +104,7 @@ SRC += ${foreach MOD, ${MODULES} ${OPTMODULES}, ${wildcard ${OPMODULEDIR}/${MOD}
 ## OPENPILOT CORE:
 SRC += ${OPMODULEDIR}/System/systemmod.c
 SRC += main.c
-SRC += board.c
+#SRC += board.c
 SRC += pios_board.c
 SRC += pios_usb_board_data.c
 SRC += osd_spicomm.c
@@ -115,6 +119,10 @@ SRC += $(DEBUG_CM3_DIR)/dcc_stdio.c
 SRC += $(DEBUG_CM3_DIR)/cm3_fault_handlers.c
 endif
 
+ifeq ($(ERASE_FLASH), YES)
+CDEFS += -DERASE_FLASH
+endif
+
 SRC += $(FLIGHTLIB)/paths.c
 SRC += $(FLIGHTLIB)/fifo_buffer.c
 SRC += $(FLIGHTLIB)/WorldMagModel.c
@@ -122,6 +130,7 @@ SRC += $(FLIGHTLIB)/insgps14state.c
 SRC += $(FLIGHTLIB)/taskmonitor.c
 SRC += $(FLIGHTLIB)/sanitycheck.c
 SRC += $(FLIGHTLIB)/timeutils.c
+SRC += $(FLIGHTLIB)/frsky_packing.c
 SRC += $(MATHLIB)/coordinate_conversions.c
 SRC += $(MATHLIB)/misc_math.c
 SRC += $(MATHLIB)/atmospheric_math.c
@@ -160,9 +169,8 @@ SRC += $(PIOSCOMMON)/pios_mutex.c
 SRC += $(PIOSCOMMON)/pios_thread.c
 SRC += $(PIOSCOMMON)/pios_queue.c
 SRC += $(PIOSCOMMON)/pios_streamfs.c
-
-include ./UAVObjects.inc
-SRC += $(UAVOBJSRC)
+SRC += $(PIOSCOMMON)/pios_hal.c
+SRC += $(PIOSCOMMON)/pios_dsm.c
 
 # List C++ source files here.
 # use file-extension .cpp for C++-files (not .C)
@@ -316,6 +324,8 @@ ASFLAGS += $(ADEFS)
 ASFLAGS += -Wa,-adhlns=$(addprefix $(OUTDIR)/, $(notdir $(addsuffix .lst, $(basename $<))))
 ASFLAGS += $(patsubst %,-I%,$(EXTRAINCDIRS))
 
+LIBS += $(UAVOBJLIB)
+
 # Linker flags.
 #  -Wl,...:     tell GCC to pass this to linker.
 #    -Map:      create map file
@@ -329,5 +339,9 @@ LDFLAGS += -Wl,--fatal-warnings
 
 #Linker scripts
 LDFLAGS += -T memory.ld $(addprefix -T,$(LINKER_SCRIPTS_APP))
+
+include ./UAVObjects.inc
+UAVO_NAV = YES
+
 
 include $(MAKE_INC_DIR)/firmware-common.mk

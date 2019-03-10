@@ -203,7 +203,7 @@ void UploaderGadgetWidget::DeviceInformationUpdate(deviceInfo board)
         return;
     currentBoard = board;
     m_widget->boardName_lbl->setText(board.board->boardDescription());
-    m_widget->devID_lbl->setText(QString::number(board.board->getBoardType(), 16));
+    m_widget->devID_lbl->setText(board.board->getBoardNameFromID(board.board->getBoardType() << 8) + " (ID: 0x" + QString::number(board.board->getBoardType(), 16) + ")");
     m_widget->hwRev_lbl->setText(board.hw_revision);
     m_widget->blVer_lbl->setText(board.bl_version);
     m_widget->maxCode_lbl->setText(board.max_code_size);
@@ -214,7 +214,7 @@ void UploaderGadgetWidget::DeviceInformationUpdate(deviceInfo board)
     m_widget->radioCap_lbl->setVisible(board.board->queryCapabilities(Core::IBoardType::BOARD_CAPABILITIES_RADIO));
     m_widget->deviceInformationMainLayout->setVisible(true);
     m_widget->deviceInformationNoInfo->setVisible(false);
-    m_widget->boardPic->setPixmap(board.board->getBoardPicture().scaled(200, 200, Qt::KeepAspectRatio));
+    m_widget->boardPic->setPixmap(board.board->getBoardPicture().scaled(200, 200, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     FirmwareLoadedUpdate(loadedFile);
 }
 
@@ -267,6 +267,7 @@ void UploaderGadgetWidget::FirmwareLoadedUpdate(QByteArray firmwareArray)
         m_widget->userDefined_LD_lbl->setVisible(false);
         return;
     }
+    setStatusInfo(tr("File loaded successfully"), uploader::STATUSICON_INFO);
     m_widget->builtForLD_lbl->setText(Core::IBoardType::getBoardNameFromID(firmware.boardID()));
     bool ok;
     currentBoard.max_code_size.toLong(&ok);
@@ -1098,7 +1099,9 @@ QString UploaderGadgetWidget::LoadFirmwareFileDialog(QString boardName)
     QString fileName = QFileDialog::getOpenFileName(this,
                                                     tr("Select firmware file"),
                                                     fwDirectoryStr,
-                                                    tr("Firmware Files (*.opfw *.tlfw *.bin)"),
+                                                    tr("Firmware (fw_*.tlfw);;"
+                                                       "Bootloader Update (bu_*.tlfw);;"
+                                                       "All (*.tlfw *.opfw *.bin)"),
                                                     &selectedFilter,
                                                     options);
     return fileName;
@@ -1171,12 +1174,21 @@ void UploaderGadgetWidget::onResetButtonClick()
         }
         timeout.stop();
     }
-    setUploaderStatus(uploader::BOOTING);
-    conMngr->disconnectDevice();
-    timeout.start(200);
-    loop.exec();
-    conMngr->suspendPolling();
-    bootTimeoutTimer.start();
+    if(conMngr->getCurrentDevice().connection->shortName() == "USB")
+    {
+        setUploaderStatus(uploader::BOOTING);
+        conMngr->disconnectDevice();
+        timeout.start(200);
+        loop.exec();
+        conMngr->suspendPolling();
+        bootTimeoutTimer.start();
+    }
+    else
+    {
+        setUploaderStatus(uploader::DISCONNECTED);
+        conMngr->disconnectDevice();
+    }
+
     return;
 }
 
@@ -1235,11 +1247,19 @@ void UploaderGadgetWidget::onHaltButtonClick()
         }
         timeout.stop();
     }
-    conMngr->disconnectDevice();
-    timeout.start(200);
-    loop.exec();
-    conMngr->suspendPolling();
-    onRescueTimer(true);
+    if(conMngr->getCurrentDevice().connection->shortName() == "USB")
+    {
+        conMngr->disconnectDevice();
+        timeout.start(200);
+        loop.exec();
+        conMngr->suspendPolling();
+        onRescueTimer(true);
+    }
+    else
+    {
+        setUploaderStatus(uploader::DISCONNECTED);
+        conMngr->disconnectDevice();
+    }
     return;
 }
 
@@ -1258,7 +1278,6 @@ uploader::UploaderStatus UploaderGadgetWidget::getUploaderStatus() const
  */
 void UploaderGadgetWidget::setUploaderStatus(const uploader::UploaderStatus &value)
 {
-    qDebug()<< "STATUS="<<value;
     uploaderStatus = value;
     switch (uploaderStatus) {
     case uploader::DISCONNECTED:
@@ -1341,10 +1360,7 @@ void UploaderGadgetWidget::setUploaderStatus(const uploader::UploaderStatus &val
     case uploader::CONNECTED_TO_TELEMETRY:
         m_widget->rescueButton->setVisible(false);
         m_widget->openButton->setVisible(true);
-        if(conMngr->getCurrentDevice().connection->shortName() == "USB")
-            m_widget->haltButton->setVisible(true);
-        else
-            m_widget->haltButton->setVisible(false);
+        m_widget->haltButton->setVisible(true);
         m_widget->bootButton->setVisible(false);
         m_widget->safeBootButton->setVisible(false);
         m_widget->resetButton->setVisible(true);

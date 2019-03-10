@@ -33,7 +33,7 @@
 #define DRACO_INCLUDE_OSD_SUPPORT
 
 /* Major features */
-#define PIOS_INCLUDE_CHIBIOS
+//#define PIOS_INCLUDE_CHIBIOS
 #define PIOS_INCLUDE_BL_HELPER
 
 /* Enable/Disable PiOS Modules */
@@ -58,6 +58,7 @@
 #define PIOS_INCLUDE_WDG
 #define PIOS_INCLUDE_FASTHEAP
 #define PIOS_INCLUDE_HPWM
+#define PIOS_INCLUDE_OPENLOG
 #define PIOS_INCLUDE_DEBUG_CONSOLE
 
 /* Select the sensors to include */

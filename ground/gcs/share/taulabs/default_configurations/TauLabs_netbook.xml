@@ -7,7 +7,7 @@
     <ExpertMode>true</ExpertMode>
     <OverrideLanguage>en_US</OverrideLanguage>
     <SaveSettingsOnExit>true</SaveSettingsOnExit>
-    <StyleSheet>laptop</StyleSheet>
+    <StyleSheet>default</StyleSheet>
     <UDPMirror>false</UDPMirror>
     <UseSessionManaging>true</UseSessionManaging>
     <proxyhostname></proxyhostname>
@@ -34,23 +34,6 @@
     <Welcome>100</Welcome>
   </ModePriorities>
   <UAVGadgetConfigurations>
-    <AntennaTrackGadget>
-      <default>
-        <configInfo>
-          <locked>false</locked>
-          <version>0.0.0</version>
-        </configInfo>
-        <data>
-          <connectionMode>Serial</connectionMode>
-          <defaultDataBits>8</defaultDataBits>
-          <defaultFlow>0</defaultFlow>
-          <defaultParity>0</defaultParity>
-          <defaultPort>Unknown</defaultPort>
-          <defaultSpeed>4800</defaultSpeed>
-          <defaultStopBits>1</defaultStopBits>
-        </data>
-      </default>
-    </AntennaTrackGadget>
     <ConfigGadget>
       <default>
         <configInfo>
@@ -2509,9 +2492,9 @@
             <type>splitter</type>
           </side0>
           <side1>
-            <classId>QmlViewGadget</classId>
+            <classId>PfdQmlGadget</classId>
             <gadget>
-              <activeConfiguration>default</activeConfiguration>
+              <activeConfiguration>NoTerrain</activeConfiguration>
             </gadget>
             <type>uavGadget</type>
           </side1>

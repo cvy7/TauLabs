@@ -26,16 +26,14 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
-
+#define _USE_MATH_DEFINES
+#include <cmath>
 #include "coordinateconversions.h"
 #include <qglobal.h>
 #include <QDebug>
 #include <math.h>
 
 #include <physical_constants.h>
-
-#define RAD2DEG (180.0/M_PI)
-#define DEG2RAD (M_PI/180.0)
 
 namespace Utils {
 

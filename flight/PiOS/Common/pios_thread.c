@@ -30,7 +30,7 @@
 #if !defined(PIOS_INCLUDE_FREERTOS) && !defined(PIOS_INCLUDE_CHIBIOS)
 #error "pios_thread.c requires PIOS_INCLUDE_FREERTOS or PIOS_INCLUDE_CHIBIOS"
 #endif
-
+//#define PIOS_INCLUDE_CHIBIOS
 #if defined(PIOS_INCLUDE_FREERTOS)
 
 #include "FreeRTOS.h"
@@ -58,7 +58,7 @@
  */
 struct pios_thread *PIOS_Thread_Create(void (*fp)(void *), const char *namep, size_t stack_bytes, void *argp, enum pios_thread_prio_e prio)
 {
-	struct pios_thread *thread = PIOS_malloc(sizeof(struct pios_thread));
+	struct pios_thread *thread = PIOS_malloc_no_dma(sizeof(struct pios_thread));
 
 	if (thread == NULL)
 		return NULL;
@@ -203,8 +203,9 @@ void PIOS_Thread_Scheduler_Resume(void)
 
 #elif defined(PIOS_INCLUDE_CHIBIOS)
 
-#define ST2MS(n) (((((n) - 1UL) * 1000UL) / CH_FREQUENCY) + 1UL)
-
+//#define ST2MS(n) (((((n) - 1UL) * 1000UL) / CH_FREQUENCY) + 1UL)
+#define ST2MS(n) (n)
+//Wraparound uint32_t !!!! WTF
 /**
  * Compute size that is at rounded up to the nearest
  * multiple of 8
@@ -251,7 +252,7 @@ static uint8_t * align8_alloc(uint32_t size)
  */
 struct pios_thread *PIOS_Thread_Create(void (*fp)(void *), const char *namep, size_t stack_bytes, void *argp, enum pios_thread_prio_e prio)
 {
-	struct pios_thread *thread = PIOS_malloc(sizeof(struct pios_thread));
+	struct pios_thread *thread = PIOS_malloc_no_dma(sizeof(struct pios_thread));
 	if (thread == NULL)
 		return NULL;
 
@@ -318,7 +319,7 @@ void PIOS_Thread_Delete(struct pios_thread *threadp)
  */
 uint32_t PIOS_Thread_Systime(void)
 {
-	return (uint32_t)ST2MS(chTimeNow());
+    return (uint32_t)ST2MS(chTimeNow());
 }
 
 /**

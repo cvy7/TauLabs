@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>789</width>
-    <height>867</height>
+    <width>856</width>
+    <height>890</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -620,6 +620,26 @@ new home location unless it is in indoor mode.</string>
           </widget>
          </item>
          <item>
+          <widget class="QLabel" name="label_22">
+           <property name="text">
+            <string>0-Presure kPa</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QDoubleSpinBox" name="zero_press">
+           <property name="maximum">
+            <double>199.990000000000009</double>
+           </property>
+           <property name="singleStep">
+            <double>0.100000000000000</double>
+           </property>
+           <property name="value">
+            <double>96.000000000000000</double>
+           </property>
+          </widget>
+         </item>
+         <item>
           <widget class="QLabel" name="label_3">
            <property name="text">
             <string>Temperature range: </string>
@@ -659,10 +679,32 @@ new home location unless it is in indoor mode.</string>
          <layout class="QGridLayout" name="gridLayout_7">
           <item row="0" column="0">
            <layout class="QGridLayout" name="gridLayout_6">
+            <item row="1" column="4">
+             <widget class="QDoubleSpinBox" name="xGyroField_4">
+              <property name="decimals">
+               <number>9</number>
+              </property>
+              <property name="minimum">
+               <double>-180.000000000000000</double>
+              </property>
+              <property name="maximum">
+               <double>180.000000000000000</double>
+              </property>
+              <property name="objrelation" stdset="0">
+               <stringlist>
+                <string>objname:SensorSettings</string>
+                <string>fieldname:XGyroTempCoeff</string>
+                <string>element:T3</string>
+                <string>scale:1</string>
+                <string>buttongroup:1</string>
+               </stringlist>
+              </property>
+             </widget>
+            </item>
             <item row="2" column="4">
              <widget class="QDoubleSpinBox" name="xGyroField_5">
               <property name="decimals">
-               <number>5</number>
+               <number>9</number>
               </property>
               <property name="minimum">
                <double>-180.000000000000000</double>
@@ -681,10 +723,10 @@ new home location unless it is in indoor mode.</string>
               </property>
              </widget>
             </item>
-            <item row="3" column="2">
-             <widget class="QDoubleSpinBox" name="xGyroField_10">
+            <item row="2" column="2">
+             <widget class="QDoubleSpinBox" name="xGyroField_6">
               <property name="decimals">
-               <number>5</number>
+               <number>9</number>
               </property>
               <property name="minimum">
                <double>-180.000000000000000</double>
@@ -695,106 +737,8 @@ new home location unless it is in indoor mode.</string>
               <property name="objrelation" stdset="0">
                <stringlist>
                 <string>objname:SensorSettings</string>
-                <string>fieldname:ZGyroTempCoeff</string>
+                <string>fieldname:YGyroTempCoeff</string>
                 <string>element:T</string>
-                <string>scale:1</string>
-                <string>buttongroup:1</string>
-               </stringlist>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="4">
-             <widget class="QDoubleSpinBox" name="xGyroField_4">
-              <property name="decimals">
-               <number>5</number>
-              </property>
-              <property name="minimum">
-               <double>-180.000000000000000</double>
-              </property>
-              <property name="maximum">
-               <double>180.000000000000000</double>
-              </property>
-              <property name="objrelation" stdset="0">
-               <stringlist>
-                <string>objname:SensorSettings</string>
-                <string>fieldname:XGyroTempCoeff</string>
-                <string>element:T3</string>
-                <string>scale:1</string>
-                <string>buttongroup:1</string>
-               </stringlist>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="2">
-             <widget class="QDoubleSpinBox" name="xGyroField_2">
-              <property name="decimals">
-               <number>5</number>
-              </property>
-              <property name="minimum">
-               <double>-180.000000000000000</double>
-              </property>
-              <property name="maximum">
-               <double>180.000000000000000</double>
-              </property>
-              <property name="objrelation" stdset="0">
-               <stringlist>
-                <string>objname:SensorSettings</string>
-                <string>fieldname:XGyroTempCoeff</string>
-                <string>element:T</string>
-                <string>scale:1</string>
-                <string>buttongroup:1</string>
-               </stringlist>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="3">
-             <widget class="QLabel" name="label_14">
-              <property name="text">
-               <string>T^2</string>
-              </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
-              </property>
-             </widget>
-            </item>
-            <item row="3" column="1">
-             <widget class="QDoubleSpinBox" name="xGyroField_11">
-              <property name="decimals">
-               <number>5</number>
-              </property>
-              <property name="minimum">
-               <double>-180.000000000000000</double>
-              </property>
-              <property name="maximum">
-               <double>180.000000000000000</double>
-              </property>
-              <property name="objrelation" stdset="0">
-               <stringlist>
-                <string>objname:SensorSettings</string>
-                <string>fieldname:ZGyroTempCoeff</string>
-                <string>element:1</string>
-                <string>scale:1</string>
-                <string>buttongroup:1</string>
-               </stringlist>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="1">
-             <widget class="QDoubleSpinBox" name="xGyroField_1">
-              <property name="decimals">
-               <number>5</number>
-              </property>
-              <property name="minimum">
-               <double>-180.000000000000000</double>
-              </property>
-              <property name="maximum">
-               <double>180.000000000000000</double>
-              </property>
-              <property name="objrelation" stdset="0">
-               <stringlist>
-                <string>objname:SensorSettings</string>
-                <string>fieldname:XGyroTempCoeff</string>
-                <string>element:1</string>
                 <string>scale:1</string>
                 <string>buttongroup:1</string>
                </stringlist>
@@ -811,76 +755,20 @@ new home location unless it is in indoor mode.</string>
               </property>
              </widget>
             </item>
-            <item row="1" column="3">
-             <widget class="QDoubleSpinBox" name="xGyroField_3">
-              <property name="decimals">
-               <number>5</number>
-              </property>
-              <property name="minimum">
-               <double>-180.000000000000000</double>
-              </property>
-              <property name="maximum">
-               <double>180.000000000000000</double>
-              </property>
-              <property name="objrelation" stdset="0">
-               <stringlist>
-                <string>objname:SensorSettings</string>
-                <string>fieldname:XGyroTempCoeff</string>
-                <string>element:T2</string>
-                <string>scale:1</string>
-                <string>buttongroup:1</string>
-               </stringlist>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="1">
-             <widget class="QDoubleSpinBox" name="xGyroField_7">
-              <property name="decimals">
-               <number>5</number>
-              </property>
-              <property name="minimum">
-               <double>-180.000000000000000</double>
-              </property>
-              <property name="maximum">
-               <double>180.000000000000000</double>
-              </property>
-              <property name="objrelation" stdset="0">
-               <stringlist>
-                <string>objname:SensorSettings</string>
-                <string>fieldname:YGyroTempCoeff</string>
-                <string>element:1</string>
-                <string>scale:1</string>
-                <string>buttongroup:1</string>
-               </stringlist>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="2">
-             <widget class="QDoubleSpinBox" name="xGyroField_6">
-              <property name="decimals">
-               <number>5</number>
-              </property>
-              <property name="minimum">
-               <double>-180.000000000000000</double>
-              </property>
-              <property name="maximum">
-               <double>180.000000000000000</double>
-              </property>
-              <property name="objrelation" stdset="0">
-               <stringlist>
-                <string>objname:SensorSettings</string>
-                <string>fieldname:YGyroTempCoeff</string>
-                <string>element:T</string>
-                <string>scale:1</string>
-                <string>buttongroup:1</string>
-               </stringlist>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="4">
-             <widget class="QLabel" name="label_11">
+            <item row="0" column="2">
+             <widget class="QLabel" name="label_17">
               <property name="text">
-               <string>T^3</string>
+               <string>T</string>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignCenter</set>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="3">
+             <widget class="QLabel" name="label_14">
+              <property name="text">
+               <string>T^2</string>
               </property>
               <property name="alignment">
                <set>Qt::AlignCenter</set>
@@ -894,10 +782,10 @@ new home location unless it is in indoor mode.</string>
               </property>
              </widget>
             </item>
-            <item row="2" column="3">
-             <widget class="QDoubleSpinBox" name="xGyroField_8">
+            <item row="1" column="3">
+             <widget class="QDoubleSpinBox" name="xGyroField_3">
               <property name="decimals">
-               <number>5</number>
+               <number>9</number>
               </property>
               <property name="minimum">
                <double>-180.000000000000000</double>
@@ -908,7 +796,7 @@ new home location unless it is in indoor mode.</string>
               <property name="objrelation" stdset="0">
                <stringlist>
                 <string>objname:SensorSettings</string>
-                <string>fieldname:YGyroTempCoeff</string>
+                <string>fieldname:XGyroTempCoeff</string>
                 <string>element:T2</string>
                 <string>scale:1</string>
                 <string>buttongroup:1</string>
@@ -935,10 +823,135 @@ new home location unless it is in indoor mode.</string>
               </property>
              </widget>
             </item>
-            <item row="3" column="4">
-             <widget class="QDoubleSpinBox" name="xGyroField_9">
+            <item row="4" column="0">
+             <widget class="QLabel" name="label_13">
+              <property name="text">
+               <string>Baro</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="4">
+             <widget class="QLabel" name="label_11">
+              <property name="text">
+               <string>T^3</string>
+              </property>
+              <property name="alignment">
+               <set>Qt::AlignCenter</set>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="5">
+             <spacer name="horizontalSpacer_4">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item row="1" column="1">
+             <widget class="QDoubleSpinBox" name="xGyroField_1">
               <property name="decimals">
-               <number>5</number>
+               <number>9</number>
+              </property>
+              <property name="minimum">
+               <double>-180.000000000000000</double>
+              </property>
+              <property name="maximum">
+               <double>180.000000000000000</double>
+              </property>
+              <property name="objrelation" stdset="0">
+               <stringlist>
+                <string>objname:SensorSettings</string>
+                <string>fieldname:XGyroTempCoeff</string>
+                <string>element:1</string>
+                <string>scale:1</string>
+                <string>buttongroup:1</string>
+               </stringlist>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="3">
+             <widget class="QDoubleSpinBox" name="xGyroField_8">
+              <property name="decimals">
+               <number>9</number>
+              </property>
+              <property name="minimum">
+               <double>-180.000000000000000</double>
+              </property>
+              <property name="maximum">
+               <double>180.000000000000000</double>
+              </property>
+              <property name="objrelation" stdset="0">
+               <stringlist>
+                <string>objname:SensorSettings</string>
+                <string>fieldname:YGyroTempCoeff</string>
+                <string>element:T2</string>
+                <string>scale:1</string>
+                <string>buttongroup:1</string>
+               </stringlist>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="2">
+             <widget class="QDoubleSpinBox" name="xGyroField_2">
+              <property name="decimals">
+               <number>9</number>
+              </property>
+              <property name="minimum">
+               <double>-180.000000000000000</double>
+              </property>
+              <property name="maximum">
+               <double>180.000000000000000</double>
+              </property>
+              <property name="objrelation" stdset="0">
+               <stringlist>
+                <string>objname:SensorSettings</string>
+                <string>fieldname:XGyroTempCoeff</string>
+                <string>element:T</string>
+                <string>scale:1</string>
+                <string>buttongroup:1</string>
+               </stringlist>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="QDoubleSpinBox" name="xGyroField_7">
+              <property name="decimals">
+               <number>9</number>
+              </property>
+              <property name="minimum">
+               <double>-180.000000000000000</double>
+              </property>
+              <property name="maximum">
+               <double>180.000000000000000</double>
+              </property>
+              <property name="objrelation" stdset="0">
+               <stringlist>
+                <string>objname:SensorSettings</string>
+                <string>fieldname:YGyroTempCoeff</string>
+                <string>element:1</string>
+                <string>scale:1</string>
+                <string>buttongroup:1</string>
+               </stringlist>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="0">
+             <widget class="QLabel" name="label_21">
+              <property name="text">
+               <string>Z Gyro</string>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="1">
+             <widget class="QDoubleSpinBox" name="xGyroField_11">
+              <property name="decimals">
+               <number>9</number>
               </property>
               <property name="minimum">
                <double>-180.000000000000000</double>
@@ -950,27 +963,83 @@ new home location unless it is in indoor mode.</string>
                <stringlist>
                 <string>objname:SensorSettings</string>
                 <string>fieldname:ZGyroTempCoeff</string>
-                <string>element:T3</string>
+                <string>element:1</string>
                 <string>scale:1</string>
                 <string>buttongroup:1</string>
                </stringlist>
               </property>
              </widget>
             </item>
-            <item row="0" column="2">
-             <widget class="QLabel" name="label_17">
-              <property name="text">
-               <string>T</string>
+            <item row="4" column="1">
+             <widget class="QDoubleSpinBox" name="BaroField_1">
+              <property name="decimals">
+               <number>9</number>
               </property>
-              <property name="alignment">
-               <set>Qt::AlignCenter</set>
+              <property name="minimum">
+               <double>-180.000000000000000</double>
+              </property>
+              <property name="maximum">
+               <double>180.000000000000000</double>
+              </property>
+              <property name="objrelation" stdset="0">
+               <stringlist>
+                <string>objname:SensorSettings</string>
+                <string>fieldname:BaroTempCoeff</string>
+                <string>element:1</string>
+                <string>scale:1</string>
+                <string>buttongroup:1</string>
+               </stringlist>
+              </property>
+             </widget>
+            </item>
+            <item row="3" column="2">
+             <widget class="QDoubleSpinBox" name="xGyroField_10">
+              <property name="decimals">
+               <number>9</number>
+              </property>
+              <property name="minimum">
+               <double>-180.000000000000000</double>
+              </property>
+              <property name="maximum">
+               <double>180.000000000000000</double>
+              </property>
+              <property name="objrelation" stdset="0">
+               <stringlist>
+                <string>objname:SensorSettings</string>
+                <string>fieldname:ZGyroTempCoeff</string>
+                <string>element:T</string>
+                <string>scale:1</string>
+                <string>buttongroup:1</string>
+               </stringlist>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="2">
+             <widget class="QDoubleSpinBox" name="BaroField_2">
+              <property name="decimals">
+               <number>9</number>
+              </property>
+              <property name="minimum">
+               <double>-180.000000000000000</double>
+              </property>
+              <property name="maximum">
+               <double>180.000000000000000</double>
+              </property>
+              <property name="objrelation" stdset="0">
+               <stringlist>
+                <string>objname:SensorSettings</string>
+                <string>fieldname:BaroTempCoeff</string>
+                <string>element:T</string>
+                <string>scale:1</string>
+                <string>buttongroup:1</string>
+               </stringlist>
               </property>
              </widget>
             </item>
             <item row="3" column="3">
              <widget class="QDoubleSpinBox" name="xGyroField_12">
               <property name="decimals">
-               <number>5</number>
+               <number>9</number>
               </property>
               <property name="minimum">
                <double>-180.000000000000000</double>
@@ -989,25 +1058,71 @@ new home location unless it is in indoor mode.</string>
               </property>
              </widget>
             </item>
-            <item row="3" column="0">
-             <widget class="QLabel" name="label_13">
-              <property name="text">
-               <string>Z Gyro</string>
+            <item row="4" column="3">
+             <widget class="QDoubleSpinBox" name="BaroField_3">
+              <property name="decimals">
+               <number>9</number>
+              </property>
+              <property name="minimum">
+               <double>-180.000000000000000</double>
+              </property>
+              <property name="maximum">
+               <double>180.000000000000000</double>
+              </property>
+              <property name="objrelation" stdset="0">
+               <stringlist>
+                <string>objname:SensorSettings</string>
+                <string>fieldname:BaroTempCoeff</string>
+                <string>element:T2</string>
+                <string>scale:1</string>
+                <string>buttongroup:1</string>
+               </stringlist>
               </property>
              </widget>
             </item>
-            <item row="0" column="5">
-             <spacer name="horizontalSpacer_4">
-              <property name="orientation">
-               <enum>Qt::Horizontal</enum>
+            <item row="3" column="4">
+             <widget class="QDoubleSpinBox" name="xGyroField_9">
+              <property name="decimals">
+               <number>9</number>
               </property>
-              <property name="sizeHint" stdset="0">
-               <size>
-                <width>40</width>
-                <height>20</height>
-               </size>
+              <property name="minimum">
+               <double>-180.000000000000000</double>
               </property>
-             </spacer>
+              <property name="maximum">
+               <double>180.000000000000000</double>
+              </property>
+              <property name="objrelation" stdset="0">
+               <stringlist>
+                <string>objname:SensorSettings</string>
+                <string>fieldname:ZGyroTempCoeff</string>
+                <string>element:T3</string>
+                <string>scale:1</string>
+                <string>buttongroup:1</string>
+               </stringlist>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="4">
+             <widget class="QDoubleSpinBox" name="BaroField_4">
+              <property name="decimals">
+               <number>9</number>
+              </property>
+              <property name="minimum">
+               <double>-180.000000000000000</double>
+              </property>
+              <property name="maximum">
+               <double>180.000000000000000</double>
+              </property>
+              <property name="objrelation" stdset="0">
+               <stringlist>
+                <string>objname:SensorSettings</string>
+                <string>fieldname:BaroTempCoeff</string>
+                <string>element:T3</string>
+                <string>scale:1</string>
+                <string>buttongroup:1</string>
+               </stringlist>
+              </property>
+             </widget>
             </item>
            </layout>
           </item>
@@ -1048,6 +1163,22 @@ new home location unless it is in indoor mode.</string>
        </item>
        <item>
         <widget class="TempCompCurve" name="zGyroTemp" native="true">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>100</height>
+          </size>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="TempCompCurve" name="BaroTemp" native="true">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
            <horstretch>0</horstretch>
@@ -1293,6 +1424,7 @@ specific calibration button on top of the screen.</string>
   </customwidget>
  </customwidgets>
  <resources>
+  <include location="../coreplugin/core.qrc"/>
   <include location="../coreplugin/core.qrc"/>
  </resources>
  <connections/>

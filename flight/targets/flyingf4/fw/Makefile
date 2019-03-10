@@ -31,6 +31,7 @@ include $(BOARD_INFO_DIR)/board-info.mk
 # Set to YES for debugging
 DEBUG ?= NO
 ERASE_FLASH ?= NO
+RTOS ?= FREERTOS
 
 # List of modules to include
 MODULES = Sensors
@@ -55,7 +56,7 @@ OPTMODULES += UAVOMavlinkBridge
 OPTMODULES += UAVOFrSKYSensorHubBridge
 OPTMODULES += Battery
 OPTMODULES += ComUsbBridge
-OPTMODULES += Airspeed/revolution
+OPTMODULES += Airspeed
 OPTMODULES += UAVOLighttelemetryBridge
 OPTMODULES += PicoC
 OPTMODULES += UAVOFrSKYSPortBridge
@@ -63,6 +64,7 @@ OPTMODULES += Geofence
 OPTMODULES += FlightStats
 
 # Paths
+TARGET_ARCHITECTURE = STM32F4xx
 OPUAVTALKINC = $(OPUAVTALK)/inc
 OPUAVOBJINC = $(OPUAVOBJ)/inc
 PIOSINC = $(PIOS)/inc
@@ -71,10 +73,10 @@ MATHLIB = $(FLIGHTLIB)/math
 MATHLIBINC = $(FLIGHTLIB)/math
 RSCODE = $(FLIGHTLIB)/rscode
 RSCODEINC = $(FLIGHTLIB)/rscode
-PIOSSTM32F4XX = $(PIOS)/STM32F4xx
+PIOSSTM32FXXX = $(PIOS)/$(TARGET_ARCHITECTURE)
 PIOSCOMMON = $(PIOS)/Common
 PIOSCOMMONLIB = $(PIOSCOMMON)/Libraries
-APPLIBDIR = $(PIOSSTM32F4XX)/Libraries
+APPLIBDIR = $(PIOSSTM32FXXX)/Libraries
 STMLIBDIR = $(APPLIBDIR)
 STMSPDDIR = $(STMLIBDIR)/STM32F4xx_StdPeriph_Driver
 STMSPDSRCDIR = $(STMSPDDIR)/src
@@ -82,14 +84,11 @@ STMSPDINCDIR = $(STMSPDDIR)/inc
 DEBUG_CM3_DIR = $(PIOSCOMMONLIB)/Debug
 DEBUG_CM3_DIR_INC = $(DEBUG_CM3_DIR)/inc
 OPUAVOBJINC = $(OPUAVOBJ)/inc
-FLIGHTPLANLIB = $(OPMODULEDIR)/FlightPlan/lib
-FLIGHTPLANS = $(OPMODULEDIR)/FlightPlan/flightplans
 MAVLINKINC = $(FLIGHTLIB)/mavlink/v1.0/common
 
 # optional component libraries
-include $(PIOSCOMMONLIB)/FreeRTOS/library.mk
-#include $(PIOSCOMMONLIB)/dosfs/library.mk
 include $(FLIGHTLIB)/CMSIS3/DSP_Lib/library.mk
+include $(FLIGHTLIB)/lqg_rate/library.mk
 
 
 # List C source files here. (C dependencies are automatically generated.)
@@ -122,25 +121,24 @@ SRC += $(FLIGHTLIB)/WorldMagModel.c
 SRC += $(FLIGHTLIB)/insgps14state.c
 SRC += $(FLIGHTLIB)/taskmonitor.c
 SRC += $(FLIGHTLIB)/sanitycheck.c
+SRC += $(FLIGHTLIB)/frsky_packing.c
 SRC += $(MATHLIB)/coordinate_conversions.c
 SRC += $(MATHLIB)/misc_math.c
 SRC += $(MATHLIB)/pid.c
 SRC += $(MATHLIB)/atmospheric_math.c
-
-## PIOS Hardware (STM32F4xx)
-include $(PIOS)/STM32F4xx/library_fw.mk
 
 ## PIOS Hardware (Common)
 SRC += $(PIOSCOMMON)/pios_delay.c
 SRC += $(PIOSCOMMON)/pios_mpu6050.c
 SRC += $(PIOSCOMMON)/pios_gcsrcvr.c
 SRC += $(PIOSCOMMON)/pios_hmc5883.c
-SRC += $(PIOSCOMMON)/pios_ms5611.c
+SRC += $(PIOSCOMMON)/pios_ms5xxx.c
 SRC += $(PIOSCOMMON)/pios_etasv3.c
 SRC += $(PIOSCOMMON)/pios_mpxv5004.c
 SRC += $(PIOSCOMMON)/pios_mpxv7002.c
 SRC += $(PIOSCOMMON)/pios_crc.c
 SRC += $(PIOSCOMMON)/pios_com.c
+SRC += $(PIOSCOMMON)/pios_dsm.c
 SRC += $(PIOSCOMMON)/pios_rcvr.c
 SRC += $(PIOSCOMMON)/pios_sbus.c
 SRC += $(PIOSCOMMON)/pios_hsum.c
@@ -160,9 +158,6 @@ SRC += $(PIOSCOMMON)/pios_thread.c
 SRC += $(PIOSCOMMON)/pios_queue.c
 
 
-include ./UAVObjects.inc
-SRC += $(UAVOBJSRC)
-
 # List C++ source files here.
 # use file-extension .cpp for C++-files (not .C)
 CPPSRC =
@@ -180,7 +175,7 @@ EXTRAINCDIRS += $(OPUAVSYNTHDIR)
 EXTRAINCDIRS += $(FLIGHTLIBINC)
 EXTRAINCDIRS += $(MATHLIBINC)
 EXTRAINCDIRS += $(RSCODEINC)
-EXTRAINCDIRS += $(PIOSSTM32F4XX)
+EXTRAINCDIRS += $(PIOSSTM32FXXX)
 EXTRAINCDIRS += $(PIOSCOMMON)
 EXTRAINCDIRS += $(BOARD_INFO_DIR)
 EXTRAINCDIRS += $(STMSPDINCDIR)
@@ -206,7 +201,7 @@ EXTRA_LIBDIRS =
 EXTRA_LIBS =
 
 # Path to Linker-Scripts
-LINKERSCRIPTPATH = $(PIOSSTM32F4XX)
+LINKERSCRIPTPATH = $(PIOSSTM32FXXX)
 
 # Optimization level, can be [0, 1, 2, 3, s].
 # 0 = turn off optimization. s = optimize for size.
@@ -233,10 +228,7 @@ CDEFS += -DARM_MATH_MATRIX_CHECK
 CDEFS += -DARM_MATH_ROUNDING
 CDEFS += -D__FPU_PRESENT=1
 CDEFS += -DUNALIGNED_SUPPORT_DISABLE
-
-# This is not the best place for these.  Really should abstract out
-# to the board file or something
-CFLAGS += -DSTM32F4XX
+CFLAGS += -D$(STM32_TYPE)
 
 # Debugging format.
 DEBUGF = dwarf-2
@@ -314,6 +306,8 @@ ASFLAGS += $(ADEFS)
 ASFLAGS += -Wa,-adhlns=$(addprefix $(OUTDIR)/, $(notdir $(addsuffix .lst, $(basename $<))))
 ASFLAGS += $(patsubst %,-I%,$(EXTRAINCDIRS))
 
+LIBS += $(UAVOBJLIB)
+
 # Linker flags.
 #  -Wl,...:     tell GCC to pass this to linker.
 #    -Map:      create map file
@@ -325,109 +319,7 @@ LDFLAGS += -lc -lgcc -lm
 LDFLAGS += -Wl,--warn-common
 LDFLAGS += -Wl,--fatal-warnings
 
-#Linker scripts                                                                                                                                                                                                              
+# Linker scripts
 LDFLAGS += $(addprefix -T,$(LINKER_SCRIPTS_APP))
 
-
-# Define programs and commands.
-REMOVE  = rm -f
-
-# List of all source files.
-ALLSRC     =  $(ASRC) $(SRC) $(CPPSRC)
-# List of all source files without directory and file-extension.
-ALLSRCBASE = $(notdir $(basename $(ALLSRC)))
-# Define all object files.
-ALLOBJ     = $(addprefix $(OUTDIR)/, $(addsuffix .o, $(ALLSRCBASE)))
-# Define all listing files (used for make clean).
-LSTFILES   = $(addprefix $(OUTDIR)/, $(addsuffix .lst, $(ALLSRCBASE)))
-# Define all depedency-files (used for make clean).
-DEPFILES   = $(addprefix $(OUTDIR)/dep/, $(addsuffix .o.d, $(ALLSRCBASE)))
-
-# Default target.
-all: gccversion build
-
-build: elf hex bin lss sym
-
-# Link: create ELF output file from object files.
-$(eval $(call LINK_TEMPLATE, $(OUTDIR)/$(TARGET).elf, $(ALLOBJ)))
-
-# Assemble: create object files from assembler source files.
-$(foreach src, $(ASRC), $(eval $(call ASSEMBLE_TEMPLATE, $(src))))
-
-# Compile: create object files from C source files.
-$(foreach src, $(SRC), $(eval $(call COMPILE_C_TEMPLATE, $(src))))
-
-# Compile: create object files from C++ source files.
-$(foreach src, $(CPPSRC), $(eval $(call COMPILE_CPP_TEMPLATE, $(src))))
-
-# Compile: create assembler files from C source files. ARM/Thumb
-$(eval $(call PARTIAL_COMPILE_TEMPLATE, SRC))
-
-$(OUTDIR)/$(TARGET).bin.o: $(OUTDIR)/$(TARGET).bin
-
-$(eval $(call TLFW_TEMPLATE,$(OUTDIR)/$(TARGET).bin,$(BOARD_TYPE),$(BOARD_REVISION)))
-
-# Add jtag targets (program and wipe)
-$(eval $(call JTAG_TEMPLATE,$(OUTDIR)/$(TARGET).bin,$(FW_BANK_BASE),$(FW_BANK_SIZE),$(OPENOCD_JTAG_CONFIG),$(OPENOCD_CONFIG)))
-
-.PHONY: elf lss sym hex bin bino tlfw
-elf: $(OUTDIR)/$(TARGET).elf
-lss: $(OUTDIR)/$(TARGET).lss
-sym: $(OUTDIR)/$(TARGET).sym
-hex: $(OUTDIR)/$(TARGET).hex
-bin: $(OUTDIR)/$(TARGET).bin
-bino: $(OUTDIR)/$(TARGET).bin.o
-tlfw: $(OUTDIR)/$(TARGET).tlfw
-
-# Display sizes of sections.
-$(eval $(call SIZE_TEMPLATE, $(OUTDIR)/$(TARGET).elf))
-
-# Generate Doxygen documents
-docs:
-	doxygen  $(DOXYGENDIR)/doxygen.cfg
-
-# Install: install binary file with prefix/suffix into install directory
-install: $(OUTDIR)/$(TARGET).tlfw
-ifneq ($(INSTALL_DIR),)
-	@echo $(MSG_INSTALLING) $(call toprel, $<)
-	$(V1) mkdir -p $(INSTALL_DIR)
-	$(V1) $(INSTALL) $< $(INSTALL_DIR)/$(INSTALL_PFX)$(TARGET)$(INSTALL_SFX).tlfw
-else
-	$(error INSTALL_DIR must be specified for $@)
-endif
-
-# Target: clean project.
-clean: clean_list
-
-clean_list :
-	@echo $(MSG_CLEANING)
-	$(V1) $(REMOVE) $(OUTDIR)/$(TARGET).map
-	$(V1) $(REMOVE) $(OUTDIR)/$(TARGET).elf
-	$(V1) $(REMOVE) $(OUTDIR)/$(TARGET).hex
-	$(V1) $(REMOVE) $(OUTDIR)/$(TARGET).bin
-	$(V1) $(REMOVE) $(OUTDIR)/$(TARGET).sym
-	$(V1) $(REMOVE) $(OUTDIR)/$(TARGET).lss
-	$(V1) $(REMOVE) $(OUTDIR)/$(TARGET).bin.o
-	$(V1) $(REMOVE) $(ALLOBJ)
-	$(V1) $(REMOVE) $(LSTFILES)
-	$(V1) $(REMOVE) $(DEPFILES)
-	$(V1) $(REMOVE) $(SRC:.c=.s)
-	$(V1) $(REMOVE) $(CPPSRC:.cpp=.s)
-
-# Create output files directory
-# all known MS Windows OS define the ComSpec environment variable
-ifdef ComSpec
-$(shell md $(subst /,\\,$(OUTDIR)) 2>NUL)
-else
-$(shell mkdir -p $(OUTDIR) 2>/dev/null)
-endif
-
-# Include the dependency files.
-ifdef ComSpec
--include $(shell md $(subst /,\\,$(OUTDIR))\dep 2>NUL) $(wildcard $(OUTDIR)/dep/*)
-else
--include $(shell mkdir $(OUTDIR) 2>/dev/null) $(shell mkdir $(OUTDIR)/dep 2>/dev/null) $(wildcard $(OUTDIR)/dep/*)
-endif
-
-# Listing of phony targets.
-.PHONY : all build clean clean_list install docs
+include $(MAKE_INC_DIR)/firmware-common.mk

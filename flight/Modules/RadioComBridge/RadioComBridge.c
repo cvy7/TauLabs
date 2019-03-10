@@ -40,10 +40,16 @@
 #include "hwtaulink.h"
 #include <uavtalk_priv.h>
 #include <pios_rfm22b.h>
-#include <ecc.h>
 #if defined(PIOS_INCLUDE_FLASH_EEPROM)
 #include <pios_eeprom.h>
 #endif
+
+// these objects are parsed locally for relaying to taranis
+#include "flightbatterystate.h"
+#include "flightstatus.h"
+#include "positionactual.h"
+#include "velocityactual.h"
+#include "baroaltitude.h"
 
 #include "pios_thread.h"
 #include "pios_queue.h"
@@ -152,33 +158,34 @@ static int32_t RadioComBridgeStart(void)
 		// Configure the UAVObject callbacks
 		ObjectPersistenceConnectCallback(&objectPersistenceUpdatedCb);
 
-		// Start the primary tasks for receiving/sending UAVTalk packets from the GCS.
-		data->telemetryTxTaskHandle = PIOS_Thread_Create(telemetryTxTask, "telemetryTxTask", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
-		data->telemetryRxTaskHandle = PIOS_Thread_Create(telemetryRxTask, "telemetryRxTask", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
-			    
-		if (PIOS_PPM_RECEIVER != 0) {
-			data->PPMInputTaskHandle = PIOS_Thread_Create(PPMInputTask, "PPMInputTask",STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
-#ifdef PIOS_INCLUDE_WDG
-			PIOS_WDG_RegisterFlag(PIOS_WDG_PPMINPUT);
-#endif
-		}
-		if (!data->parseUAVTalk) {
-			// If the user wants raw serial communication, we need to spawn another thread to handle it.
-			data->serialRxTaskHandle = PIOS_Thread_Create(serialRxTask, "serialRxTask", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
-#ifdef PIOS_INCLUDE_WDG
-			PIOS_WDG_RegisterFlag(PIOS_WDG_SERIALRX);
-#endif
-		}
-		data->radioTxTaskHandle = PIOS_Thread_Create(radioTxTask, "radioTxTask", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
-		data->radioRxTaskHandle = PIOS_Thread_Create(radioRxTask, "radioRxTask", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
-
-		// Register the watchdog timers.
+		// Watchdog must be registered before starting tasks
 #ifdef PIOS_INCLUDE_WDG
 		PIOS_WDG_RegisterFlag(PIOS_WDG_TELEMETRYTX);
 		PIOS_WDG_RegisterFlag(PIOS_WDG_TELEMETRYRX);
 		PIOS_WDG_RegisterFlag(PIOS_WDG_RADIOTX);
 		PIOS_WDG_RegisterFlag(PIOS_WDG_RADIORX);
 #endif
+
+		// Start the primary tasks for receiving/sending UAVTalk packets from the GCS.
+		data->telemetryTxTaskHandle = PIOS_Thread_Create(telemetryTxTask, "telemetryTxTask", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
+		data->telemetryRxTaskHandle = PIOS_Thread_Create(telemetryRxTask, "telemetryRxTask", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
+			    
+		if (PIOS_PPM_RECEIVER != 0) {
+#ifdef PIOS_INCLUDE_WDG
+			PIOS_WDG_RegisterFlag(PIOS_WDG_PPMINPUT);
+#endif
+			data->PPMInputTaskHandle = PIOS_Thread_Create(PPMInputTask, "PPMInputTask",STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
+		}
+		if (!data->parseUAVTalk) {
+#ifdef PIOS_INCLUDE_WDG
+			PIOS_WDG_RegisterFlag(PIOS_WDG_SERIALRX);
+#endif
+			// If the user wants raw serial communication, we need to spawn another thread to handle it.
+			data->serialRxTaskHandle = PIOS_Thread_Create(serialRxTask, "serialRxTask", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
+		}
+		data->radioTxTaskHandle = PIOS_Thread_Create(radioTxTask, "radioTxTask", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
+		data->radioRxTaskHandle = PIOS_Thread_Create(radioRxTask, "radioRxTask", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
+
 		return 0;
 	}
 
@@ -217,7 +224,6 @@ static int32_t RadioComBridgeInitialize(void)
 	data->radioTxRetries = 0;
 
 	data->parseUAVTalk = true;
-	PIOS_COM_RADIO = PIOS_COM_RFM22B;
 
 	return 0;
 }
@@ -379,10 +385,10 @@ static void radioRxTask( __attribute__ ((unused))
 #ifdef PIOS_INCLUDE_WDG
 		PIOS_WDG_UpdateFlag(PIOS_WDG_RADIORX);
 #endif
-		if (PIOS_COM_RADIO) {
+		if (PIOS_COM_RFM22B) {
 			uint8_t serial_data[1];
 			uint16_t bytes_to_process =
-			    PIOS_COM_ReceiveBuffer(PIOS_COM_RADIO,
+			    PIOS_COM_ReceiveBuffer(PIOS_COM_RFM22B,
 						   serial_data,
 						   sizeof(serial_data),
 						   MAX_PORT_DELAY);
@@ -505,7 +511,7 @@ static void serialRxTask( __attribute__ ((unused))
 #ifdef PIOS_INCLUDE_WDG
 		PIOS_WDG_UpdateFlag(PIOS_WDG_SERIALRX);
 #endif
-		if (inputPort && PIOS_COM_RADIO) {
+		if (inputPort && PIOS_COM_RFM22B) {
 			// Receive some data.
 			uint16_t bytes_to_process =
 			    PIOS_COM_ReceiveBuffer(inputPort,
@@ -523,7 +529,7 @@ static void serialRxTask( __attribute__ ((unused))
 				while (count-- > 0 && ret < -1) {
 					ret =
 					    PIOS_COM_SendBufferNonBlocking
-					    (PIOS_COM_RADIO,
+					    (PIOS_COM_RFM22B,
 					     data->serialRxBuf,
 					     bytes_to_process);
 				}
@@ -582,7 +588,7 @@ static int32_t RadioSendHandler(uint8_t * buf, int32_t length)
 	if (!data->parseUAVTalk) {
 		return length;
 	}
-	uint32_t outputPort = PIOS_COM_RADIO;
+	uint32_t outputPort = PIOS_COM_RFM22B;
 
 	// Don't send any data unless the radio port is available.
 	if (outputPort && PIOS_COM_Available(outputPort)) {
@@ -703,12 +709,25 @@ static void ProcessRadioStream(UAVTalkConnection inConnectionHandle,
 			// some objects will send back a response to the remote modem
 			UAVTalkReceiveObject(inConnectionHandle);
 			break;
+		case FLIGHTBATTERYSTATE_OBJID:
+		case FLIGHTSTATUS_OBJID:
+		case POSITIONACTUAL_OBJID:
+		case VELOCITYACTUAL_OBJID:
+		case BAROALTITUDE_OBJID:
+
+			// process the battery voltage locally for relaying to taranis
+			UAVTalkReceiveObject(inConnectionHandle);
+			UAVTalkRelayPacket(inConnectionHandle, outConnectionHandle);
+			break;
 		case RFM22BSTATUS_OBJID:
 		{
 			uint32_t inst_id = UAVTalkGetPacketInstId(inConnectionHandle);
 			if (inst_id == 0) {
 				// instance 0 is from modem. do not pass this version
 			} else {
+				// process the remote link state locally for relaying to taranis
+				UAVTalkReceiveObject(inConnectionHandle);
+
 				// for remote modem
 				UAVTalkRelayPacket(inConnectionHandle, outConnectionHandle);
 			}

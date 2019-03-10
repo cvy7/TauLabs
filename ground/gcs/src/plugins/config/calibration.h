@@ -95,7 +95,7 @@ public slots:
     void doCancelTempCalPoint();
 
     //! Set up the curves
-    void configureTempCurves(TempCompCurve *x, TempCompCurve *y, TempCompCurve *z);
+    void configureTempCurves(TempCompCurve *x, TempCompCurve *y, TempCompCurve *z, TempCompCurve *p);
 
 private slots:
     //! New data acquired
@@ -107,6 +107,8 @@ private slots:
 public slots:
     //! Set temperature calibration range
     void setTempCalRange(int r);
+    //! Set zero pressure
+    void setZeroPress(double p);
 
 signals:
     //! Indicate whether the calibration is busy
@@ -180,6 +182,9 @@ private:
     //! The expected gravity amplitude
     double accelLength;
 
+    //! Mesured air pressure
+    double zero_pressure;
+
     //! Store the initial metadata in order to restore it after calibration
     QMap<QString, UAVObject::Metadata> originalMetaData;
 
@@ -189,7 +194,9 @@ private:
     QList<double> gyro_accum_x;
     QList<double> gyro_accum_y;
     QList<double> gyro_accum_z;
+    QList<double> baro_accum_p;
     QList<double> gyro_accum_temp;
+    QList<double> baro_accum_temp;
     QList<double> accel_accum_x;
     QList<double> accel_accum_y;
     QList<double> accel_accum_z;
@@ -205,8 +212,26 @@ private:
     static const int NUM_SENSOR_UPDATES_YAW_ORIENTATION = 300;
     static const int NUM_SENSOR_UPDATES_SIX_POINT = 100;
     static const int SENSOR_UPDATE_PERIOD = 20;
+    static const int SENSOR_UPDATE_PERIOD_SLOW = 200;
     static const int NON_SENSOR_UPDATE_PERIOD = 0;
     double MIN_TEMPERATURE_RANGE;
+    double baro_temp_0;
+    double gyro_temp_0;
+    double baro_acc_inc;
+    double gyro_acc_inc;
+    double baro_acc_p;
+    double gyro_acc_x;
+    double gyro_acc_y;
+    double gyro_acc_z;
+
+    double gyro_acc_x_tmp;
+    double gyro_acc_y_tmp;
+    double gyro_acc_z_tmp;
+
+    double baro_acc_temp;
+    double gyro_acc_temp;
+    int baro_acc_size;
+    int gyro_acc_size;
 
     double boardRotationMatrix[3][3];
     double initialAccelsScale[3];
@@ -217,9 +242,10 @@ private:
     TempCompCurve *xCurve;
     TempCompCurve *yCurve;
     TempCompCurve *zCurve;
+    TempCompCurve *pCurve;
 
 protected:
-    enum sensor_type {ACCEL, GYRO, MAG};
+    enum sensor_type {ACCEL, GYRO, MAG, BARO};
 
     //! Connect and speed up or disconnect a sensor
     void connectSensor(sensor_type sensor, bool connect);
@@ -264,7 +290,8 @@ protected:
     int computeTempCal();
 
     //! Update the graphs with the temperature compensation
-    void updateTempCompCalibrationDisplay();
+    void updateTempCompCalibrationDisplay(double *res);
+    void updateTempCompCalibrationDisplayP(double *res);
 
 };
 

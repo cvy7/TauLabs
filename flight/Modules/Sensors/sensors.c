@@ -34,6 +34,12 @@
 #include "physical_constants.h"
 #include "pios_thread.h"
 #include "pios_queue.h"
+#include "misc_math.h"
+
+#if defined(PIOS_INCLUDE_PX4FLOW)
+#include "pios_px4flow_priv.h"
+extern uintptr_t external_i2c_adapter_id;
+#endif /* PIOS_INCLUDE_PX4FLOW */
 
 // UAVOs
 #include "accels.h"
@@ -43,7 +49,10 @@
 #include "gyros.h"
 #include "gyrosbias.h"
 #include "homelocation.h"
+#include "opticalflowsettings.h"
+#include "opticalflow.h"
 #include "sensorsettings.h"
+#include "rangefinderdistance.h"
 #include "inssettings.h"
 #include "magnetometer.h"
 #include "magbias.h"
@@ -72,10 +81,19 @@ static void update_gyros(struct pios_sensor_gyro_data *gyro);
 static void update_mags(struct pios_sensor_mag_data *mag);
 static void update_baro(struct pios_sensor_baro_data *baro);
 
+#if defined (PIOS_INCLUDE_OPTICALFLOW)
+static void update_optical_flow(struct pios_sensor_optical_flow_data *optical_flow);
+#endif /* PIOS_INCLUDE_OPTICALFLOW */
+
+#if defined (PIOS_INCLUDE_RANGEFINDER)
+static void update_rangefinder(struct pios_sensor_rangefinder_data *rangefinder);
+#endif /* PIOS_INCLUDE_RANGEFINDER */
+
 static void mag_calibration_prelemari(MagnetometerData *mag);
 static void mag_calibration_fix_length(MagnetometerData *mag);
 
 static void updateTemperatureComp(float temperature, float *temp_bias);
+static void updateTemperatureCompBaro(float temperature, float *temp_bias);
 
 // Private variables
 static struct pios_thread *sensorsTaskHandle;
@@ -93,7 +111,9 @@ static float gyro_scale[3] = {0,0,0};
 static float gyro_coeff_x[4] = {0,0,0,0};
 static float gyro_coeff_y[4] = {0,0,0,0};
 static float gyro_coeff_z[4] = {0,0,0,0};
+static float baro_coeff[4] = {0,0,0,0};
 static float gyro_temp_bias[3] = {0,0,0};
+static float baro_temp_bias = 0;
 static float z_accel_offset = 0;
 static float Rsb[3][3] = {{0}}; //! Rotation matrix that transforms from the body frame to the sensor board frame
 static int8_t rotate = 0;
@@ -130,6 +150,37 @@ static int32_t SensorsInitialize(void)
 	SensorSettingsInitialize();
 	INSSettingsInitialize();
 
+#if defined (PIOS_INCLUDE_OPTICALFLOW)
+	OpticalFlowSettingsInitialize();
+	OpticalFlowSettingsData opticalFlowSettings;
+	OpticalFlowSettingsGet(&opticalFlowSettings);
+	switch (opticalFlowSettings.SensorType ){
+		case OPTICALFLOWSETTINGS_SENSORTYPE_PX4FLOW:
+#if defined(PIOS_INCLUDE_PX4FLOW)
+		{
+			struct pios_px4flow_cfg pios_px4flow_cfg;
+			pios_px4flow_cfg.rotation.roll_D100 = opticalFlowSettings.SensorRotation[OPTICALFLOWSETTINGS_SENSORROTATION_ROLL];
+			pios_px4flow_cfg.rotation.pitch_D100 = opticalFlowSettings.SensorRotation[OPTICALFLOWSETTINGS_SENSORROTATION_PITCH];
+			pios_px4flow_cfg.rotation.yaw_D100 = opticalFlowSettings.SensorRotation[OPTICALFLOWSETTINGS_SENSORROTATION_YAW];
+			if (PIOS_PX4Flow_Init(&pios_px4flow_cfg, external_i2c_adapter_id) != 0) {
+				// set alarm
+			}
+		}
+#endif /* PIOS_INCLUDE_PX4FLOW */
+		break;
+	}
+
+	if (PIOS_SENSORS_GetQueue(PIOS_SENSOR_OPTICAL_FLOW) != NULL ) {
+		OpticalFlowInitialize();
+	}
+#endif /* PIOS_INCLUDE_OPTICALFLOW */
+
+#if defined (PIOS_INCLUDE_RANGEFINDER)
+	if (PIOS_SENSORS_GetQueue(PIOS_SENSOR_RANGEFINDER) != NULL ) {
+		RangefinderDistanceInitialize();
+	}
+#endif /* PIOS_INCLUDE_RANGEFINDER */
+
 	rotate = 0;
 
 	AttitudeSettingsConnectCallback(&settingsUpdatedCb);
@@ -145,15 +196,18 @@ static int32_t SensorsInitialize(void)
  */
 static int32_t SensorsStart(void)
 {
-	// Start main task
+    // Watchdog must be registered before starting task
+    PIOS_WDG_RegisterFlag(PIOS_WDG_SENSORS);
+
+    // Start main task
 	sensorsTaskHandle = PIOS_Thread_Create(SensorsTask, "Sensors", STACK_SIZE_BYTES, NULL, TASK_PRIORITY);
 	TaskMonitorAdd(TASKINFO_RUNNING_SENSORS, sensorsTaskHandle);
-	PIOS_WDG_RegisterFlag(PIOS_WDG_SENSORS);
+    //PIOS_WDG_RegisterFlag(PIOS_WDG_SENSORS);
 
 	return 0;
 }
 
-MODULE_INITCALL(SensorsInitialize, SensorsStart)
+MODULE_INITCALL(SensorsInitialize, SensorsStart);
 
 
 /**
@@ -234,11 +288,28 @@ static void SensorsTask(void *parameters)
 
 		}
 
+#if defined(PIOS_INCLUDE_OPTICALFLOW)
+		struct pios_sensor_optical_flow_data optical_flow;
+		queue = PIOS_SENSORS_GetQueue(PIOS_SENSOR_OPTICAL_FLOW);
+		if (queue != NULL && PIOS_Queue_Receive(queue, &optical_flow, 0) != false) {
+			update_optical_flow(&optical_flow);
+		}
+#endif /* PIOS_INCLUDE_OPTICALFLOW */
+
+#if defined(PIOS_INCLUDE_RANGEFINDER)
+		struct pios_sensor_rangefinder_data rangefinder;
+		queue = PIOS_SENSORS_GetQueue(PIOS_SENSOR_RANGEFINDER);
+		if (queue != NULL && PIOS_Queue_Receive(queue, &rangefinder, 0) != false) {
+			update_rangefinder(&rangefinder);
+		}
+#endif /* PIOS_INCLUDE_RANGEFINDER */
+
+		bool test_good_run = good_runs > REQUIRED_GOOD_CYCLES;
 		#if defined(AQ32)
-		if ((good_runs > REQUIRED_GOOD_CYCLES) && !external_mag_fail)
-		#else
-		if (good_runs > REQUIRED_GOOD_CYCLES)
+		test_good_run = test_good_run && !external_mag_fail;
 		#endif
+
+		if (test_good_run)
 			AlarmsClear(SYSTEMALARMS_ALARM_SENSORS);
 		else
 			good_runs++;
@@ -392,18 +463,74 @@ static void update_mags(struct pios_sensor_mag_data *mag)
  */
 static void update_baro(struct pios_sensor_baro_data *baro)
 {
-	if (isnan(baro->altitude) || isnan(baro->temperature) || isnan(baro->pressure)){
+    #define MS5611_P0               101.3250f
+    //???????????????????? WTF ?
+
+    // Check for Nan or infinity
+	if (IS_NOT_FINITE(baro->altitude) || IS_NOT_FINITE(baro->temperature) || IS_NOT_FINITE(baro->pressure)) {
 		AlarmsSet(SYSTEMALARMS_ALARM_TEMPBARO, SYSTEMALARMS_ALARM_WARNING);
 		return;
 	}
-	
+
 	AlarmsSet(SYSTEMALARMS_ALARM_TEMPBARO, SYSTEMALARMS_ALARM_OK);
 	BaroAltitudeData baroAltitude;
 	baroAltitude.Temperature = baro->temperature;
-	baroAltitude.Pressure = baro->pressure;
-	baroAltitude.Altitude = baro->altitude;
+
+    updateTemperatureCompBaro(baro->temperature, &baro_temp_bias);
+    if (bias_correct_gyro){
+        baro->pressure -= baro_temp_bias;
+        //baro->pressure = baro_temp_bias;
+    }
+    baroAltitude.Pressure = baro->pressure;
+    //baroAltitude.Altitude = baro->altitude;
+    baroAltitude.Altitude = 44330.0f * (1.0f - powf(baroAltitude.Pressure / MS5611_P0, (1.0f / 5.255f)));
+    //WTF ?
 	BaroAltitudeSet(&baroAltitude);
 }
+
+/*
+ * Update the optical flow uavo from the data from the optical flow queue
+ * @param [in] optical_flow raw optical flow data
+ */
+#if defined (PIOS_INCLUDE_OPTICALFLOW)
+void update_optical_flow(struct pios_sensor_optical_flow_data *optical_flow)
+{
+	OpticalFlowData opticalFlow;
+
+	opticalFlow.x = optical_flow->x_dot;
+	opticalFlow.y = optical_flow->y_dot;
+	opticalFlow.z = optical_flow->z_dot;
+
+	opticalFlow.Quality = optical_flow->quality;
+
+	OpticalFlowSet(&opticalFlow);
+}
+#endif /* PIOS_INCLUDE_OPTICALFLOW */
+
+/*
+ * Update the rangefinder uavo from the data from the rangefinder queue
+ * @param [in] rangefinder raw rangefinder data
+ */
+#if defined (PIOS_INCLUDE_RANGEFINDER)
+static void update_rangefinder(struct pios_sensor_rangefinder_data *rangefinder)
+{
+	RangefinderDistanceData rangefinderAltitude;
+	RangefinderDistanceGet(&rangefinderAltitude);
+
+	AttitudeActualData attitude;
+	AttitudeActualGet(&attitude);
+
+	rangefinderAltitude.Range = rangefinder->range;
+
+	if (rangefinder->range_status == 0) {
+		rangefinderAltitude.RangingStatus = RANGEFINDERDISTANCE_RANGINGSTATUS_OUTOFRANGE;
+	} else {
+		rangefinderAltitude.RangingStatus = RANGEFINDERDISTANCE_RANGINGSTATUS_INRANGE;
+	}
+
+	RangefinderDistanceSet(&rangefinderAltitude);
+}
+#endif /* PIOS_INCLUDE_RANGEFINDER */
 
 /**
  * Compute the bias expected from temperature variation for each gyro
@@ -413,7 +540,7 @@ static void updateTemperatureComp(float temperature, float *temp_bias)
 {
 	static int temp_counter = -1;
 	static float temp_accum = 0;
-	static const float TEMP_MIN = -10;
+    static const float TEMP_MIN = -25;// -10 - ????
 	static const float TEMP_MAX = 60;
 
 	if (temperature < TEMP_MIN)
@@ -436,7 +563,25 @@ static void updateTemperatureComp(float temperature, float *temp_bias)
 		               gyro_coeff_y[2] * powf(t,2) + gyro_coeff_y[3] * powf(t,3);
 		temp_bias[2] = gyro_coeff_z[0] + gyro_coeff_z[1] * t + 
 		               gyro_coeff_z[2] * powf(t,2) + gyro_coeff_z[3] * powf(t,3);
+
 	}
+}
+
+/**
+ * Compute the bias of baro-altimeter
+ */
+static void updateTemperatureCompBaro(float t, float *temp_bias)
+{
+    static const float TEMP_MIN = -45;//Temperature minimum from datasheet
+    static const float TEMP_MAX = 85;
+
+    if (t < TEMP_MIN)
+        t = TEMP_MIN;
+    if (t > TEMP_MAX)
+        t = TEMP_MAX;
+        // Compute a third order polynomial
+        *temp_bias = baro_coeff[0] + baro_coeff[1]*t +
+                  baro_coeff[2]*t*t + baro_coeff[3]*t*t*t;
 }
 
 /**
@@ -581,6 +726,12 @@ static void settingsUpdatedCb(UAVObjEvent * objEv)
 	gyro_coeff_z[1] =  sensorSettings.ZGyroTempCoeff[1];
 	gyro_coeff_z[2] =  sensorSettings.ZGyroTempCoeff[2];
 	gyro_coeff_z[3] =  sensorSettings.ZGyroTempCoeff[3];
+
+    baro_coeff[0] =  sensorSettings.BaroTempCoeff[0];
+    baro_coeff[1] =  sensorSettings.BaroTempCoeff[1];
+    baro_coeff[2] =  sensorSettings.BaroTempCoeff[2];
+    baro_coeff[3] =  sensorSettings.BaroTempCoeff[3];
+
 	z_accel_offset  =  sensorSettings.ZAccelOffset;
 
 	// Zero out any adaptive tracking

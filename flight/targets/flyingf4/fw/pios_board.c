@@ -63,13 +63,14 @@ static const struct pios_hmc5883_cfg pios_hmc5883_external_cfg = {
 /**
  * Configuration for the MS5611 chip
  */
-#if defined(PIOS_INCLUDE_MS5611)
-#include "pios_ms5611_priv.h"
-static const struct pios_ms5611_cfg pios_ms5611_cfg = {
-	.oversampling = MS5611_OSR_1024,
+#if defined(PIOS_INCLUDE_MS5XXX)
+#include "pios_ms5xxx_priv.h"
+static const struct pios_ms5xxx_cfg pios_ms5xxx_cfg = {
+	.oversampling = MS5XXX_OSR_1024,
 	.temperature_interleaving = 1,
+	.pios_ms5xxx_model = PIOS_MS5M_MS5611,
 };
-#endif /* PIOS_INCLUDE_MS5611 */
+#endif /* PIOS_INCLUDE_MS5XXX */
 
 /**
  * Configuration for the MPU6050 chip
@@ -164,7 +165,6 @@ uintptr_t pios_com_mavlink_id;
 uintptr_t pios_com_frsky_sensor_hub_id;
 uintptr_t pios_com_lighttelemetry_id;
 uintptr_t pios_com_picoc_id;
-uintptr_t pios_com_overo_id;
 uintptr_t pios_com_frsky_sport_id;
 
 uintptr_t pios_uavo_settings_fs_id;
@@ -211,7 +211,7 @@ static void PIOS_Board_configure_com (const struct pios_usart_cfg *usart_port_cf
 #ifdef PIOS_INCLUDE_DSM
 static void PIOS_Board_configure_dsm(const struct pios_usart_cfg *pios_usart_dsm_cfg, const struct pios_dsm_cfg *pios_dsm_cfg,
 		const struct pios_com_driver *pios_usart_com_driver,
-		ManualControlSettingsChannelGroupsOptions channelgroup,uint8_t *bind)
+		ManualControlSettingsChannelGroupsOptions channelgroup,HwFlyingF4DSMxModeOptions *mode)
 {
 	uintptr_t pios_usart_dsm_id;
 	if (PIOS_USART_Init(&pios_usart_dsm_id, pios_usart_dsm_cfg)) {
@@ -220,7 +220,7 @@ static void PIOS_Board_configure_dsm(const struct pios_usart_cfg *pios_usart_dsm
 
 	uintptr_t pios_dsm_id;
 	if (PIOS_DSM_Init(&pios_dsm_id, pios_dsm_cfg, pios_usart_com_driver,
-			pios_usart_dsm_id, *bind)) {
+			pios_usart_dsm_id, *mode)) {
 		PIOS_Assert(0);
 	}
 
@@ -339,9 +339,11 @@ void PIOS_Board_Init(void) {
 	EventDispatcherInitialize();
 	UAVObjInitialize();
 
-	/* Initialize the alarms library */
+	/* Initialize the alarms library. Reads RCC reset flags */
 	AlarmsInitialize();
+	PIOS_RESET_Clear(); // Clear the RCC reset flags after use.
 
+	/* Initialize the hardware UAVOs */
 	HwFlyingF4Initialize();
 	ModuleSettingsInitialize();
 
@@ -531,8 +533,8 @@ void PIOS_Board_Init(void) {
 #endif	/* PIOS_INCLUDE_USB */
 
 	/* Configure the IO ports */
-	uint8_t hw_DSMxBind;
-	HwFlyingF4DSMxBindGet(&hw_DSMxBind);
+	HwFlyingF4DSMxModeOptions hw_DSMxMode;
+	HwFlyingF4DSMxModeGet(&hw_DSMxMode);
 
 	/* init sensor queue registration */
 	PIOS_SENSORS_Init();
@@ -572,7 +574,7 @@ void PIOS_Board_Init(void) {
 #if defined(PIOS_INCLUDE_DSM)
 		{
 			PIOS_Board_configure_dsm(&pios_usart1_dsm_hsum_cfg, &pios_usart1_dsm_aux_cfg, &pios_usart_com_driver,
-				MANUALCONTROLSETTINGS_CHANNELGROUPS_DSMMAINPORT, &hw_DSMxBind);
+				MANUALCONTROLSETTINGS_CHANNELGROUPS_DSM, &hw_DSMxMode);
 		}
 #endif	/* PIOS_INCLUDE_DSM */
 		break;
@@ -625,7 +627,7 @@ void PIOS_Board_Init(void) {
 #if defined(PIOS_INCLUDE_DSM)
 		{
 			PIOS_Board_configure_dsm(&pios_usart2_dsm_hsum_cfg, &pios_usart2_dsm_aux_cfg, &pios_usart_com_driver,
-				MANUALCONTROLSETTINGS_CHANNELGROUPS_DSMMAINPORT, &hw_DSMxBind);
+				MANUALCONTROLSETTINGS_CHANNELGROUPS_DSM, &hw_DSMxMode);
 		}
 #endif	/* PIOS_INCLUDE_DSM */
 		break;
@@ -715,7 +717,7 @@ void PIOS_Board_Init(void) {
 #if defined(PIOS_INCLUDE_DSM)
 		{
 			PIOS_Board_configure_dsm(&pios_usart3_dsm_hsum_cfg, &pios_usart3_dsm_aux_cfg, &pios_usart_com_driver,
-				MANUALCONTROLSETTINGS_CHANNELGROUPS_DSMMAINPORT, &hw_DSMxBind);
+				MANUALCONTROLSETTINGS_CHANNELGROUPS_DSM, &hw_DSMxMode);
 		}
 #endif	/* PIOS_INCLUDE_DSM */
 	case HWFLYINGF4_UART3_HOTTSUMD:
@@ -1033,10 +1035,10 @@ void PIOS_Board_Init(void) {
 	//I2C is slow, sensor init as well, reset watchdog to prevent reset here
 	PIOS_WDG_Clear();
 
-#if defined(PIOS_INCLUDE_MS5611)
-	if (PIOS_MS5611_Init(&pios_ms5611_cfg, pios_i2c_10dof_adapter_id) != 0)
+#if defined(PIOS_INCLUDE_MS5XXX)
+	if (PIOS_MS5XXX_I2C_Init(pios_i2c_10dof_adapter_id, MS5XXX_I2C_ADDR_0x77, &pios_ms5xxx_cfg) != 0)
 		panic(4);
-	if (PIOS_MS5611_Test() != 0)
+	if (PIOS_MS5XXX_Test() != 0)
 		panic(4);
 #endif
 

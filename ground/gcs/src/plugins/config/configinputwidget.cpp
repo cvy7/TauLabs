@@ -3,6 +3,7 @@
  *
  * @file       configinputwidget.cpp
  * @author     The OpenPilot Team, http://www.openpilot.org Copyright (C) 2010.
+ * @author     dRonin, http://dronin.org Copyright (C) 2015
  * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013
  * @addtogroup GCSPlugins GCS Plugins
  * @{
@@ -98,7 +99,7 @@ ConfigInputWidget::ConfigInputWidget(QWidget *parent) : ConfigTaskWidget(parent)
     }
 
     // RSSI
-    inputChannelForm * inpForm=new inputChannelForm(this,false,false);
+    inputChannelForm * inpForm = new inputChannelForm(this, false, false, inputChannelForm::CHANNELFUNC_RSSI);
     m_config->channelSettings->layout()->addWidget(inpForm);
     QString name = "RSSI";
     inpForm->setName(name);
@@ -137,6 +138,8 @@ ConfigInputWidget::ConfigInputWidget(QWidget *parent) : ConfigTaskWidget(parent)
     addUAVObjectToWidgetRelation("ManualControlSettings","Stabilization2Settings",m_config->fmsSsPos2Yaw,"Yaw");
     addUAVObjectToWidgetRelation("ManualControlSettings","Stabilization3Settings",m_config->fmsSsPos3Yaw,"Yaw");
 
+    // connect this before the widgets are populated to ensure it always fires
+    connect(m_config->armControl, SIGNAL(currentTextChanged(QString)), this, SLOT(checkArmingConfig(QString)));
     addUAVObjectToWidgetRelation("ManualControlSettings","Arming",m_config->armControl);
     addUAVObjectToWidgetRelation("ManualControlSettings","ArmedTimeout",m_config->armTimeout,0,1000);
     addUAVObjectToWidgetRelation("ManualControlSettings","FailsafeBehavior",m_config->failsafeBehavior);
@@ -1631,10 +1634,14 @@ void ConfigInputWidget::simpleCalibration(bool enable)
         for (unsigned int i = 0; i < ManualControlCommand::CHANNEL_NUMELEM; i++)
             manualSettingsData.ChannelNeutral[i] = manualCommandData.Channel[i];
 
-        // Force flight mode neutral to middle
+        // Force switches to middle
         manualSettingsData.ChannelNeutral[ManualControlSettings::CHANNELNUMBER_FLIGHTMODE] =
                 (manualSettingsData.ChannelMax[ManualControlSettings::CHANNELNUMBER_FLIGHTMODE] +
                 manualSettingsData.ChannelMin[ManualControlSettings::CHANNELNUMBER_FLIGHTMODE]) / 2;
+
+        manualSettingsData.ChannelNeutral[ManualControlSettings::CHANNELNUMBER_ARMING] =
+                (manualSettingsData.ChannelMax[ManualControlSettings::CHANNELNUMBER_ARMING] +
+                manualSettingsData.ChannelMin[ManualControlSettings::CHANNELNUMBER_ARMING]) / 2;
 
         // Force throttle to be near min
         manualSettingsData.ChannelNeutral[ManualControlSettings::CHANNELNEUTRAL_THROTTLE] =
@@ -1672,4 +1679,12 @@ void ConfigInputWidget::failsafeBehaviorActivated(QString text)
         msgBox.setIcon(QMessageBox::Warning);
         msgBox.exec();
     }
+}
+
+void ConfigInputWidget::checkArmingConfig(QString option)
+{
+    if(!m_config->armControl->isEnabled() || option.contains("+Throttle") || option == "Always Disarmed")
+        m_config->lblThrottleCheckWarn->hide();
+    else
+        m_config->lblThrottleCheckWarn->show();
 }

@@ -2,6 +2,7 @@
  ******************************************************************************
  * @file       sparky.cpp
  * @author     Tau Labs, http://taulabs.org, Copyright (C) 2013
+ * @author     dRonin, http://dronin.org Copyright (C) 2015
  *
  * @addtogroup GCSPlugins GCS Plugins
  * @{
@@ -87,6 +88,8 @@ bool Sparky::queryCapabilities(BoardCapabilities capability)
     case BOARD_CAPABILITIES_BAROS:
         return true;
     case BOARD_CAPABILITIES_RADIO:
+        return false;
+    case BOARD_CAPABILITIES_OSD:
         return false;
     }
     return false;
@@ -219,4 +222,25 @@ int Sparky::queryMaxGyroRate()
     default:
         return 500;
     }
+}
+
+QStringList Sparky::getAdcNames()
+{
+    ExtensionSystem::PluginManager *pm = ExtensionSystem::PluginManager::instance();
+    UAVObjectManager *uavoManager = pm->getObject<UAVObjectManager>();
+    HwSparky *hwSparky = HwSparky::GetInstance(uavoManager);
+    Q_ASSERT(hwSparky);
+    if (!hwSparky)
+        return QStringList();
+
+    QStringList names;
+    HwSparky::DataFields settings = hwSparky->getData();
+    if (settings.OutPort == HwSparky::OUTPORT_PWM82ADC || settings.OutPort == HwSparky::OUTPORT_PWM7PWM_IN2ADC)
+        names << "PWM10" << "PWM9" << "Disabled";
+    else if (settings.OutPort == HwSparky::OUTPORT_PWM73ADC)
+        names << "PWM10" << "PWM9" << "PWM8";
+    else
+        names << "Disabled" << "Disabled" << "Disabled";
+
+    return names;
 }

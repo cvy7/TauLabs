@@ -93,13 +93,13 @@ TIM4  |  Servo 3  |  Servo 4  |  Servo 5  |  Servo 6
 //
 // See also pios_board.c
 //-------------------------
-extern uintptr_t pios_com_telem_rf_id;
+extern uintptr_t pios_com_telem_serial_id;
 extern uintptr_t pios_com_gps_id;
 extern uintptr_t pios_com_bridge_id;
 extern uintptr_t pios_com_mavlink_id;
 
 #define PIOS_COM_GPS                    (pios_com_gps_id)
-#define PIOS_COM_TELEM_RF               (pios_com_telem_rf_id)
+#define PIOS_COM_TELEM_RF               (pios_com_telem_serial_id)
 #define PIOS_COM_BRIDGE                 (pios_com_bridge_id)
 #define PIOS_COM_MAVLINK                (pios_com_mavlink_id)
 
@@ -152,6 +152,13 @@ extern uintptr_t pios_com_mavlink_id;
 #define PIOS_DSM_NUM_INPUTS				12
 
 //-------------------------
+// Receiver HSUM input
+//-------------------------
+#define PIOS_HSUM_MAX_DEVS				2
+#define PIOS_HSUM_NUM_INPUTS				32
+
+
+//-------------------------
 // Servo outputs
 //-------------------------
 #define PIOS_SERVO_UPDATE_HZ			50
@@ -164,14 +171,25 @@ extern uintptr_t pios_com_mavlink_id;
 
 //-------------------------
 // ADC
+// ADC0 : PA4 ADC_IN4
+// ADC1 : PA5 ADC_IN5
+// ADC2 : PA1 ADC_IN1
+// ADC3 : PB1 ADC_IN9
 //-------------------------
+
+#if defined(PIOS_INCLUDE_ADC)
+extern uintptr_t pios_internal_adc_id;
+#define pios_internal_adc_id					(pios_internal_adc_id)
+#endif
+#define PIOS_ADC_SUB_DRIVER_MAX_INSTANCES		1
+
+#define VREF_PLUS								3.3
 
 //-------------------------
 // GPIO
 //-------------------------
 #define PIOS_GPIO_PORTS				{  }
 #define PIOS_GPIO_PINS				{  }
-#define PIOS_GPIO_CLKS				{  }
 #define PIOS_GPIO_NUM				0
 
 #endif /* STM32103CB_NAZE32_H_ */
