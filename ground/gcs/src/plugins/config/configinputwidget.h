@@ -191,6 +191,7 @@ private slots:
         void invertControls();
         void simpleCalibration(bool state);
         void updateCalibration();
+        void failsafeBehaviorActivated(QString text);
         void checkArmingConfig(QString option);
 
 protected:

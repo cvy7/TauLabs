@@ -29,7 +29,7 @@
    <item>
     <widget class="QTabWidget" name="tabWidget">
      <property name="currentIndex">
-      <number>2</number>
+      <number>0</number>
      </property>
      <widget class="QWidget" name="RCInput">
       <attribute name="title">
@@ -129,7 +129,7 @@
             <x>0</x>
             <y>0</y>
             <width>852</width>
-            <height>584</height>
+            <height>573</height>
            </rect>
           </property>
           <layout class="QGridLayout" name="gridLayout">
@@ -579,7 +579,7 @@
             <x>0</x>
             <y>0</y>
             <width>852</width>
-            <height>584</height>
+            <height>573</height>
            </rect>
           </property>
           <layout class="QGridLayout" name="gridLayout_7" rowstretch="1,0,0">
@@ -1394,8 +1394,8 @@ channel value for each flight mode.</string>
            <rect>
             <x>0</x>
             <y>0</y>
-            <width>838</width>
-            <height>737</height>
+            <width>835</width>
+            <height>929</height>
            </rect>
           </property>
           <layout class="QVBoxLayout" name="verticalLayout_2">
@@ -1575,6 +1575,81 @@ channel value for each flight mode.</string>
        </item>
       </layout>
      </widget>
+     <widget class="QWidget" name="tabFailsafe">
+      <attribute name="title">
+       <string>Failsafe Settings</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_13">
+       <item>
+        <widget class="QScrollArea" name="scrollArea_4">
+         <property name="widgetResizable">
+          <bool>true</bool>
+         </property>
+         <widget class="QWidget" name="scrollAreaWidgetContents_4">
+          <property name="geometry">
+           <rect>
+            <x>0</x>
+            <y>0</y>
+            <width>828</width>
+            <height>549</height>
+           </rect>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_4">
+           <item>
+            <widget class="QGroupBox" name="groupBox_4">
+             <property name="title">
+              <string>Failsafe Settings</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout_14">
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_8">
+                <item>
+                 <widget class="QLabel" name="label_2">
+                  <property name="text">
+                   <string>When RC input connection is lost:</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QComboBox" name="failsafeBehavior"/>
+                </item>
+                <item>
+                 <spacer name="horizontalSpacer_15">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+               </layout>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <spacer name="verticalSpacer_7">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>20</width>
+               <height>40</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
     </widget>
    </item>
    <item>
@@ -1709,6 +1784,7 @@ Applies and Saves all settings to SD</string>
   <tabstop>saveRCInputToSD</tabstop>
  </tabstops>
  <resources>
+  <include location="../coreplugin/core.qrc"/>
   <include location="../coreplugin/core.qrc"/>
  </resources>
  <connections/>

@@ -25,6 +25,8 @@
 		<field name="UpdatePeriod" units="ms" type="int32" elements="1" defaultvalue="50"/>
 		<field name="YawMode" units="" type="enum" elements="1" options="Rate,AxisLock,Attitude,Path,POI" defaultvalue="AxisLock"/>
 		<field name="LandingRate" units="m/s" type="float" elements="1" defaultvalue="0.5"/>
+		<field name="RTHHorizontalVelMax" units="m/s" type="float" elements="1" defaultvalue="2.5"/>
+		<field name="RTHAltitudeMin" units="m" type="float" elements="1" defaultvalue="15"/>
 
 		<!-- Loiter mode configuration -->
 		<field name="LoiterBrakingTimeConstant" units="s" type="float" elements="1" defaultvalue="1.25"/>

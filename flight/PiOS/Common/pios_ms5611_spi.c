@@ -42,7 +42,7 @@
 /* Private constants */
 #define PIOS_MS5611_OVERSAMPLING oversampling
 #define MS5611_TASK_PRIORITY	PIOS_THREAD_PRIO_HIGHEST
-#define MS5611_TASK_STACK_BYTES	512
+#define MS5611_TASK_STACK_BYTES	678
 
 /* MS5611 Addresses */
 #define MS5611_RESET            0x1E
@@ -53,6 +53,9 @@
 #define MS5611_TEMP_ADDR        0x50
 #define MS5611_ADC_MSB          0xF6
 #define MS5611_P0               101.3250f
+
+#define MS5611_MAX_INVALID_SAMPLES	10
+#define MS5611_INVALID_PRESS_DIFF	200 /* 2 mBar */
 
 /* Private methods */
 static int32_t PIOS_MS5611_Read(uint8_t address, uint8_t * buffer, uint8_t len);
@@ -417,27 +420,30 @@ int32_t PIOS_MS5611_SPI_Test()
 		return -1;
 
 
-	PIOS_MS5611_ClaimDevice();
-	PIOS_MS5611_StartADC(TEMPERATURE_CONV);
-	PIOS_DELAY_WaitmS(PIOS_MS5611_GetDelay());
-	PIOS_MS5611_ReadADC();
-	PIOS_MS5611_ReleaseDevice();
+	uint8_t tries = MS5611_MAX_INVALID_SAMPLES;
+	while(--tries) {
+		PIOS_MS5611_ClaimDevice();
+		PIOS_MS5611_StartADC(TEMPERATURE_CONV);
+		PIOS_DELAY_WaitmS(PIOS_MS5611_GetDelay());
+		PIOS_MS5611_ReadADC();
+		PIOS_MS5611_ReleaseDevice();
 
-	PIOS_MS5611_ClaimDevice();
-	PIOS_MS5611_StartADC(PRESSURE_CONV);
-	PIOS_DELAY_WaitmS(PIOS_MS5611_GetDelay());
-	PIOS_MS5611_ReadADC();
-	PIOS_MS5611_ReleaseDevice();
+		PIOS_MS5611_ClaimDevice();
+		PIOS_MS5611_StartADC(PRESSURE_CONV);
+		PIOS_DELAY_WaitmS(PIOS_MS5611_GetDelay());
+		PIOS_MS5611_ReadADC();
+		PIOS_MS5611_ReleaseDevice();
 
 
-	// check range for sanity according to datasheet
-	if (dev->temperature_unscaled < -4000 ||
-		dev->temperature_unscaled > 8500 ||
-		dev->pressure_unscaled < 1000 ||
-		dev->pressure_unscaled > 120000)
-		return -1;
+		// check range for sanity according to datasheet
+		if (!(dev->temperature_unscaled < -4000 ||
+			dev->temperature_unscaled > 8500 ||
+			dev->pressure_unscaled < 1000 ||
+			dev->pressure_unscaled > 120000))
+			return 0;
+	}
 
-	return 0;
+	return (tries == 0) ? -1 : 0;
 }
 
 static void PIOS_MS5611_Task(void *parameters)
@@ -445,6 +451,10 @@ static void PIOS_MS5611_Task(void *parameters)
 	// init this to 1 in order to force a temperature read on the first run
 	uint32_t temp_press_interleave_count = 1;
 	int32_t  read_adc_result = 0;
+
+	int64_t pressure_unscaled_last_valid = 0;
+	uint32_t pressure_invalid_cnt = 0;
+	bool first_run = true;
 
 	while (1) {
 
@@ -471,6 +481,15 @@ static void PIOS_MS5611_Task(void *parameters)
 		read_adc_result = PIOS_MS5611_ReadADC();
 		PIOS_MS5611_ReleaseDevice();
 
+		if (abs(dev->pressure_unscaled - pressure_unscaled_last_valid) > MS5611_INVALID_PRESS_DIFF && !first_run) {
+			pressure_invalid_cnt++;
+			if (pressure_invalid_cnt < MS5611_MAX_INVALID_SAMPLES)
+				continue;
+		}
+
+		pressure_invalid_cnt = 0;
+		pressure_unscaled_last_valid = dev->pressure_unscaled;
+
 		// Compute the altitude from the pressure and temperature and send it out
 		struct pios_sensor_baro_data data;
 		data.temperature = ((float) dev->temperature_unscaled) / 100.0f;
@@ -481,6 +500,8 @@ static void PIOS_MS5611_Task(void *parameters)
 		if (read_adc_result == 0) {
 			PIOS_Queue_Send(dev->queue, &data, 0);
 		}
+
+		first_run = false;
 	}
 }
 
