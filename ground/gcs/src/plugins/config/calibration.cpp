@@ -791,7 +791,7 @@ void Calibration::doStartTempCal()
 
     // Set up timeout timer
     timer.setSingleShot(true);
-    timer.start(10800000);
+    timer.start(86400000);
     connect(&timer,SIGNAL(timeout()),this,SLOT(timeout()));
 }
 
