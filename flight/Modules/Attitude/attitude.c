@@ -1420,10 +1420,19 @@ static void check_home_location()
     if (armed != FLIGHTSTATUS_ARMED_DISARMED)
 		return;
 
-    uint8_t FlightMode;
+    // Calculate if FlightMode == FLIGHTSTATUS_FLIGHTMODE_RETURNTOHOME
+           uint8_t  FlightMode=0;
+    static uint8_t  FlightMode_prev=0;
+
     FlightStatusFlightModeGet(&FlightMode);
-    // Do not calculate if already set +  calculate if FlightMode == FLIGHTSTATUS_FLIGHTMODE_RETURNTOHOME
-    if ((homeLocation.Set == HOMELOCATION_SET_TRUE) && (FlightMode != FLIGHTSTATUS_FLIGHTMODE_RETURNTOHOME))
+
+    if((FlightMode == FLIGHTSTATUS_FLIGHTMODE_RETURNTOHOME) && (FlightMode != FlightMode_prev)){
+        homeLocation.Set = HOMELOCATION_SET_FALSE;
+        FlightMode_prev=FlightMode;
+    }
+
+    // Do not calculate if already set
+    if (homeLocation.Set == HOMELOCATION_SET_TRUE)
 		return;
 
 	GPSPositionData gps;
