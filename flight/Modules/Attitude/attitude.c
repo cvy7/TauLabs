@@ -1417,11 +1417,13 @@ static void check_home_location()
 	// Do not attempt this calculation while armed
 	uint8_t armed;
 	FlightStatusArmedGet(&armed);
-	if (armed != FLIGHTSTATUS_ARMED_DISARMED)
+    if (armed != FLIGHTSTATUS_ARMED_DISARMED)
 		return;
 
-	// Do not calculate if already set
-	if (homeLocation.Set == HOMELOCATION_SET_TRUE)
+    uint8_t FlightMode;
+    FlightStatusFlightModeGet(&FlightMode);
+    // Do not calculate if already set +  calculate if FlightMode == FLIGHTSTATUS_FLIGHTMODE_RETURNTOHOME
+    if ((homeLocation.Set == HOMELOCATION_SET_TRUE) && (FlightMode != FLIGHTSTATUS_FLIGHTMODE_RETURNTOHOME))
 		return;
 
 	GPSPositionData gps;
