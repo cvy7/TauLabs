@@ -1426,10 +1426,10 @@ static void check_home_location()
 
     FlightStatusFlightModeGet(&FlightMode);
 
-    if((FlightMode == FLIGHTSTATUS_FLIGHTMODE_RETURNTOHOME) && (FlightMode != FlightMode_prev)){
+    if((FlightMode == FLIGHTSTATUS_FLIGHTMODE_RETURNTOHOME) && (FlightMode != FlightMode_prev))
         homeLocation.Set = HOMELOCATION_SET_FALSE;
-        FlightMode_prev=FlightMode;
-    }
+
+    FlightMode_prev=FlightMode;
 
     // Do not calculate if already set
     if (homeLocation.Set == HOMELOCATION_SET_TRUE)
